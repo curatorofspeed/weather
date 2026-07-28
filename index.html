@@ -1,0 +1,559 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Daily Highs · Rain &amp; Snow</title>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root{--carbon:#0A0C0F;--slate:#12161B;--rule:#232B34;--vapor:#E6EBF1;--haze:#7C8895;--dim:#4C5764;
+--pulse:#38BDF8;--ember:#FF6B35;--obs:#C8B4FF;--gain:#3DD68C;--gold:#F5B32B;--rain:#5EC8F5;--loss:#F0616D;
+--mono:'JetBrains Mono',ui-monospace,Menlo,monospace;--disp:'Archivo',system-ui,sans-serif}
+*{box-sizing:border-box}
+body{margin:0;background:var(--carbon);color:var(--vapor);font-family:var(--disp);-webkit-font-smoothing:antialiased}
+:focus-visible{outline:2px solid var(--gold);outline-offset:2px}
+@media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+header{position:sticky;top:0;z-index:5;background:linear-gradient(180deg,#0A0C0F 75%,rgba(10,12,15,.9));
+  padding:14px 18px 10px;border-bottom:1px solid var(--rule)}
+.hrow{display:flex;align-items:baseline;gap:12px}
+h1{font-size:19px;font-weight:800;letter-spacing:-.02em;margin:0}
+h1 i{font-style:normal;color:var(--ember)}
+.when{font-family:var(--mono);font-size:11px;color:var(--haze);margin-left:auto;text-align:right;line-height:1.5}
+.refresh{background:none;border:1px solid var(--rule);border-radius:6px;color:var(--haze);
+  font-family:var(--mono);font-size:11px;padding:6px 11px;cursor:pointer}
+.refresh:hover{border-color:var(--ember);color:var(--ember)}
+.refresh:disabled{opacity:.45;cursor:default}
+.htrust{font-family:var(--mono);font-size:10.5px;color:var(--haze);margin-top:7px}
+.htrust b{color:var(--gain);font-weight:500}
+main{padding:14px 12px 40px;max-width:640px;margin:0 auto}
+.city{background:var(--slate);border:1px solid var(--rule);border-radius:12px;padding:16px 16px 12px;margin-bottom:12px}
+.name{display:flex;align-items:baseline;gap:8px;margin-bottom:2px}
+.name b{font-size:16px;font-weight:600;letter-spacing:-.01em}
+.name span{font-family:var(--mono);font-size:10.5px;color:var(--dim)}
+.name .locked{margin-left:auto;font-family:var(--mono);font-size:9.5px;letter-spacing:.09em;color:var(--obs)}
+.big{display:flex;align-items:flex-end;gap:14px;margin:10px 0 2px}
+.big em{font-style:normal;font-size:52px;font-weight:500;letter-spacing:-.04em;line-height:.92}
+.big .rng{font-family:var(--mono);font-size:12px;color:var(--haze);padding-bottom:7px;line-height:1.5}
+.big .rng u{display:block;text-decoration:none;font-size:9.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--dim)}
+.lbl{font-family:var(--mono);font-size:10px;letter-spacing:.11em;text-transform:uppercase;color:var(--haze)}
+.curve{margin:12px 0 8px}
+.curve svg{width:100%;height:74px;display:block;overflow:visible}
+.now{display:flex;flex-wrap:wrap;border-top:1px solid var(--rule);padding-top:10px;margin-top:4px}
+.now div{flex:1;min-width:76px;font-family:var(--mono)}
+.now u{display:block;text-decoration:none;font-size:9.5px;letter-spacing:.09em;text-transform:uppercase;color:var(--dim)}
+.now b{display:block;font-size:15px;font-weight:500;margin-top:1px}
+.now .o{color:var(--obs)}
+.days{display:flex;gap:6px;margin-top:12px;border-top:1px solid var(--rule);padding-top:11px}
+.day{flex:1;text-align:center;font-family:var(--mono);padding:5px 2px;border-radius:7px;background:rgba(255,255,255,.022)}
+.day u{display:block;text-decoration:none;font-size:9.5px;color:var(--dim);letter-spacing:.06em}
+.day b{display:block;font-size:15px;font-weight:500;margin-top:3px}
+.day i{display:block;font-style:normal;font-size:9.5px;color:var(--dim);margin-top:1px}
+.conf{display:flex;align-items:center;gap:8px;margin-top:10px;font-family:var(--mono);font-size:10.5px;color:var(--haze)}
+.meter{flex:1;height:3px;background:var(--rule);border-radius:2px;overflow:hidden}
+.meter i{display:block;height:100%;border-radius:2px}
+.chk{font-family:var(--mono);font-size:10.5px;color:var(--haze);margin-top:8px;line-height:1.7}
+.chk b{font-weight:500;color:var(--vapor)}
+.chk .good{color:var(--gain)}.chk .bad{color:var(--loss)}
+.wet{margin-top:14px;border-top:1px solid var(--rule);padding-top:12px}
+.wetrow{display:flex;align-items:baseline;gap:10px;font-family:var(--mono);font-size:12.5px;margin-bottom:8px}
+.wetrow u{text-decoration:none;font-size:9.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--dim);min-width:74px}
+.wetrow b{font-weight:500;font-size:15px}
+.wetrow span{color:var(--haze);font-size:11.5px}
+.fell{color:var(--rain)}
+.bar{height:7px;background:var(--rule);border-radius:4px;overflow:hidden;display:flex;margin:4px 0 6px}
+.bar i{display:block;height:100%}
+.bar .banked{background:var(--rain)}
+.bar .fc{background:rgba(94,200,245,.4)}
+.thr{display:flex;gap:6px;margin-top:8px;flex-wrap:wrap}
+.tchip{flex:1;min-width:104px;font-family:var(--mono);padding:7px 9px;border-radius:8px;
+  background:rgba(255,255,255,.022);border:1px solid var(--rule)}
+.tchip u{display:block;text-decoration:none;font-size:9.5px;color:var(--dim);letter-spacing:.05em}
+.tchip b{display:block;font-size:15px;font-weight:500;margin-top:2px}
+.tchip.set b{color:var(--gain)}
+.tchip.dead b{color:var(--dim)}
+.msg{padding:44px 20px;text-align:center;font-family:var(--mono);font-size:12px;color:var(--haze);line-height:1.9}
+.msg b{display:block;font-family:var(--disp);font-size:15px;color:var(--vapor);margin-bottom:6px}
+.err{border:1px solid rgba(240,97,109,.35);background:rgba(240,97,109,.06);border-radius:10px;
+  padding:12px 14px;font-family:var(--mono);font-size:11px;color:#FFC4C9;margin-bottom:12px;line-height:1.7}
+.foot{font-family:var(--mono);font-size:10px;color:var(--dim);line-height:1.8;padding:6px 4px 0}
+.skel{opacity:.4}
+</style>
+</head>
+<body>
+<header>
+  <div class="hrow">
+    <h1>Daily<i>·</i>Highs</h1>
+    <button class="refresh" id="rf">Refresh</button>
+    <div class="when" id="when">—</div>
+  </div>
+  <div class="htrust" id="trust"></div>
+</header>
+<main><div id="errs"></div><div id="list"></div><p class="foot" id="foot"></p></main>
+
+<script>
+/* ════════════════════════════════════════════════════════════════════
+   Audited rebuild. Three rules the old version broke:
+
+   1. CORRECT AGAINST THE THERMOMETER. Every load, each model's last
+      ~30 hours are scored against the station's own observations, and
+      its measured bias is subtracted before it votes.
+   2. START FROM NOW. The remainder of today is anchored to the current
+      observation and relaxes back to the corrected model over 6 hours.
+      Today's high = max(what's already recorded, corrected remaining
+      hours). Certainty tightens as the day runs out.
+   3. SCORE YOURSELF. The morning call is stored; the next day it is
+      graded against what actually happened. The track record is on
+      the card, wins and misses alike.
+   ════════════════════════════════════════════════════════════════════ */
+
+const CITIES=[
+ {id:'KNYC',city:'New York',site:'Central Park',lat:40.7794,lon:-73.9692,tz:'America/New_York'},
+ {id:'KLAX',city:'Los Angeles',site:'LAX',lat:33.9425,lon:-118.4081,tz:'America/Los_Angeles'},
+ {id:'KMDW',city:'Chicago',site:'Midway',lat:41.7861,lon:-87.7524,tz:'America/Chicago'},
+ {id:'KMIA',city:'Miami',site:'Miami Intl',lat:25.7906,lon:-80.2871,tz:'America/New_York'},
+ {id:'KAUS',city:'Austin',site:'Bergstrom',lat:30.1975,lon:-97.6664,tz:'America/Chicago'},
+ {id:'KDEN',city:'Denver',site:'Denver Intl',lat:39.8617,lon:-104.6731,tz:'America/Denver'},
+ {id:'KPHL',city:'Philadelphia',site:'PHL',lat:39.8683,lon:-75.2311,tz:'America/New_York'},
+ {id:'KBOS',city:'Boston',site:'Logan',lat:42.3606,lon:-71.0106,tz:'America/New_York'},
+ {id:'KATL',city:'Atlanta',site:'Hartsfield',lat:33.6301,lon:-84.4418,tz:'America/New_York'},
+ {id:'KSEA',city:'Seattle',site:'SeaTac',lat:47.4444,lon:-122.3138,tz:'America/Los_Angeles'},
+];
+const MODELS=['gfs_hrrr','ncep_nbm_conus','ecmwf_ifs025','gfs_seamless'];
+const W_NEAR={gfs_hrrr:40,ncep_nbm_conus:30,ecmwf_ifs025:20,gfs_seamless:10};
+const W_FAR ={gfs_hrrr:0, ncep_nbm_conus:30,ecmwf_ifs025:42,gfs_seamless:28};
+const WET=0.01, LADDER=[0.25,0.5,1,1.5,2,3,4,5,6,7,8,9,10,12,15];
+const PEAK_END=19;            // local hour after which the high is treated as locked
+
+const S={data:{},climo:{},track:{},errs:[],busy:false,ts:null};
+const mean=a=>a.length?a.reduce((x,y)=>x+y,0)/a.length:null;
+const sd=a=>{const m=mean(a);return(m==null||a.length<2)?null:Math.sqrt(a.reduce((s,x)=>s+(x-m)**2,0)/(a.length-1))};
+const clamp=(x,a,b)=>Math.max(a,Math.min(b,x));
+const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const dayKey=(iso,tz)=>new Intl.DateTimeFormat('en-CA',{timeZone:tz,year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date(iso));
+const hourIn=(tz,d)=>{const h=+new Intl.DateTimeFormat('en-GB',{timeZone:tz,hour:'2-digit',hour12:false}).format(d||new Date());return h===24?0:h};
+const hourKeyTz=(d,tz)=>{const f=new Intl.DateTimeFormat('en-CA',{timeZone:tz,year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',hour12:false}).formatToParts(d);
+  const g=k=>f.find(p=>p.type===k).value;let h=g('hour');if(h==='24')h='00';
+  return `${g('year')}-${g('month')}-${g('day')}T${h.padStart(2,'0')}`};
+const isoDay=d=>d.toISOString().slice(0,10);
+const daysAgo=n=>isoDay(new Date(Date.now()-n*864e5));
+const q=(sorted,p)=>{if(!sorted.length)return null;const i=clamp(p,0,1)*(sorted.length-1),lo=Math.floor(i),hi=Math.ceil(i);
+  return lo===hi?sorted[lo]:sorted[lo]+(sorted[hi]-sorted[lo])*(i-lo)};
+const store={async get(k){try{if(window.storage){const r=await window.storage.get(k,false);return r?JSON.parse(r.value):null}}catch(e){}return null},
+  async set(k,v){try{if(window.storage)await window.storage.set(k,JSON.stringify(v),false)}catch(e){}}};
+
+async function jget(u){const r=await fetch(u,{headers:{Accept:'application/json'}});
+  if(!r.ok)throw new Error(r.status+' '+r.statusText);return r.json()}
+
+/* ── fetch ─────────────────────────────────────────────────────── */
+async function models(c){
+  const u=`https://api.open-meteo.com/v1/forecast?latitude=${c.lat}&longitude=${c.lon}`
+   +`&hourly=temperature_2m&models=${MODELS.join(',')}&temperature_unit=fahrenheit`
+   +`&timezone=${encodeURIComponent(c.tz)}&forecast_days=5&past_days=2`;
+  const raw=await jget(u),blocks=Array.isArray(raw)?raw:[raw],out={};
+  for(const b of blocks){
+    const h=b.hourly;if(!h||!h.time)continue;
+    if(b.model&&h.temperature_2m){out[b.model]={t:h.time,v:h.temperature_2m};continue}
+    let hit=false;
+    for(const m of MODELS)if(h['temperature_2m_'+m]){out[m]={t:h.time,v:h['temperature_2m_'+m]};hit=true}
+    if(!hit&&h.temperature_2m)out[MODELS[0]]={t:h.time,v:h.temperature_2m};
+  }
+  return out;
+}
+async function obs(c){
+  const since=new Date(Date.now()-50*36e5).toISOString().replace(/\.\d+Z$/,'Z');
+  const d=await jget(`https://api.weather.gov/stations/${c.id}/observations?start=${since}&limit=240`);
+  return (d.features||[]).map(f=>{const p=f.properties||{};
+    return{t:p.timestamp,
+      temp:p.temperature&&p.temperature.value!=null?p.temperature.value*9/5+32:null,
+      dew:p.dewpoint&&p.dewpoint.value!=null?p.dewpoint.value*9/5+32:null,
+      sky:(p.cloudLayers||[]).map(l=>l.amount).join('/')||'CLR'}})
+    .filter(r=>r.temp!=null).sort((a,b)=>new Date(a.t)-new Date(b.t));
+}
+async function wet(c){
+  return jget(`https://api.open-meteo.com/v1/forecast?latitude=${c.lat}&longitude=${c.lon}`
+   +`&hourly=precipitation&daily=precipitation_sum,snowfall_sum,precipitation_probability_max`
+   +`&precipitation_unit=inch&timezone=${encodeURIComponent(c.tz)}&past_days=32&forecast_days=16`);
+}
+async function climo(c){
+  const k='climo_'+c.id, cached=await store.get(k);
+  if(cached&&Date.now()-cached.at<30*864e5)return cached.rows;
+  const u=`https://archive-api.open-meteo.com/v1/archive?latitude=${c.lat}&longitude=${c.lon}`
+   +`&start_date=${daysAgo(365*7)}&end_date=${daysAgo(7)}&daily=precipitation_sum`
+   +`&precipitation_unit=inch&timezone=${encodeURIComponent(c.tz)}`;
+  const d=await jget(u);
+  const rows=(d.daily&&d.daily.time||[]).map((t,i)=>({d:t,v:d.daily.precipitation_sum[i]})).filter(r=>r.v!=null);
+  await store.set(k,{at:Date.now(),rows});
+  return rows;
+}
+
+/* ── 1. score each model against the thermometer (last ~30h) ───── */
+function fitBias(mod,obsArr,tz,nowKey){
+  const om={};
+  obsArr.forEach(o=>{const k=hourKeyTz(new Date(o.t),tz);(om[k]=om[k]||[]).push(o.temp)});
+  const per={},all=[];let n=0;
+  for(const m in mod){
+    const{t,v}=mod[m],errs=[];
+    for(let i=0;i<t.length;i++){
+      const k=t[i].slice(0,13);
+      if(k>nowKey)break;
+      const o=om[k];
+      if(o&&v[i]!=null)errs.push(v[i]-mean(o));
+    }
+    if(errs.length>=6){
+      const recent=errs.slice(-30);
+      per[m]=mean(recent);
+      all.push(...recent);
+      n=Math.max(n,recent.length);
+    }
+  }
+  return{per,n,bias:all.length?mean(all):null,
+    rmse:all.length?Math.sqrt(mean(all.map(e=>e*e))):null};
+}
+
+/* ── weighted, bias-corrected hourly blend for one date ────────── */
+function blendHours(mod,date,wset,per){
+  const acc={};
+  for(let pass=0;pass<2;pass++){
+    for(const m in mod){
+      const w=pass===0?(wset[m]||0):1;
+      if(!w)continue;
+      const b=clamp((per&&per[m])||0,-6,6);
+      const{t,v}=mod[m];
+      for(let i=0;i<t.length;i++){
+        if(t[i].slice(0,10)!==date||v[i]==null)continue;
+        const hr=+t[i].slice(11,13);
+        (acc[hr]=acc[hr]||{n:0,d:0});acc[hr].n+=(v[i]-b)*w;acc[hr].d+=w;
+      }
+    }
+    if(Object.keys(acc).length)break;   // second pass only if weights excluded everything
+  }
+  const out={};
+  for(const h in acc)out[+h]=acc[h].d?acc[h].n/acc[h].d:null;
+  return out;
+}
+
+/* ── 2. today's high: obs floor + anchored remaining hours ─────── */
+function todayHigh(hours,nowHr,obsNow,obsMax,spread){
+  const hs=Object.keys(hours).map(Number);
+  if(!hs.length)return null;
+  let off=0;
+  if(obsNow!=null&&hours[nowHr]!=null)off=obsNow-hours[nowHr];
+  let maxRem=null,remHr=null;
+  for(const h of hs){
+    if(h<nowHr)continue;
+    const v=hours[h]+off*Math.max(0,1-(h-nowHr)/6);
+    if(maxRem==null||v>maxRem){maxRem=v;remHr=h}
+  }
+  let mu=maxRem, peakHr=remHr, locked=false;
+  if(obsMax!=null&&(mu==null||obsMax>=mu)){mu=obsMax;locked=nowHr>=PEAK_END||maxRem==null||obsMax>maxRem+0.5}
+  if(mu==null)return null;
+  const remainFrac=clamp((PEAK_END-nowHr)/12,0,1);
+  const base=Math.max(1.1,(spread||1)*1.25+0.5);
+  let sigma=Math.max(0.5,base*Math.max(remainFrac,0.12));
+  if(locked)sigma=Math.min(sigma,0.6);
+  let lo=mu-sigma,hi=mu+sigma;
+  if(obsMax!=null&&lo<obsMax)lo=obsMax;
+  return{mu,sigma,lo,hi,off,peakHr,locked};
+}
+
+/* future days: bias-corrected per-model daily max, weighted ─────── */
+function futureDay(mod,date,lead,per){
+  const w=lead<=1?W_NEAR:W_FAR;
+  const vals=[];let num=0,den=0;
+  for(const m in mod){
+    const{t,v}=mod[m];let mx=null;
+    for(let i=0;i<t.length;i++){
+      if(t[i].slice(0,10)!==date||v[i]==null)continue;
+      if(mx==null||v[i]>mx)mx=v[i];
+    }
+    if(mx==null)continue;
+    mx-=clamp(((per&&per[m])||0)*0.7,-3,3);   // shrunk station correction
+    vals.push(mx);const k=w[m]||0;num+=mx*k;den+=k;
+  }
+  if(!vals.length)return null;
+  const mu=den?num/den:mean(vals);
+  const spread=vals.length>1?(sd(vals)||0.9):1.4;
+  const sigma=Math.max(1.1,spread*1.25+0.5+lead*0.45);
+  return{mu,sigma,spread,n:vals.length};
+}
+
+/* ── rain ──────────────────────────────────────────────────────── */
+function rainToday(W,tz,today){
+  if(!W||!W.daily)return null;
+  const di=W.daily.time.indexOf(today);
+  const fcast=di>=0?W.daily.precipitation_sum[di]:null;
+  const pop=di>=0&&W.daily.precipitation_probability_max?W.daily.precipitation_probability_max[di]:null;
+  let fell=0,have=false;
+  const hr=hourIn(tz);
+  if(W.hourly&&W.hourly.time){
+    for(let i=0;i<W.hourly.time.length;i++){
+      const t=W.hourly.time[i];if(t.slice(0,10)!==today)continue;
+      if(+t.slice(11,13)>hr)continue;
+      const v=W.hourly.precipitation[i];if(v!=null){fell+=v;have=true}
+    }
+  }
+  const settled=have&&fell>=WET;
+  let p=settled?1:(pop!=null?pop/100:(fcast>=WET?0.6:0.1));
+  if(!settled&&have&&fcast!=null&&Math.max(0,fcast-fell)<WET/2)p=Math.min(p,0.08);
+  return{fell:have?fell:null,settled,p:clamp(p,0,1),fcast,win:rainWindow(W,today,hr)};
+}
+function rainWindow(W,today,nowHr){
+  if(!W.hourly||!W.hourly.time)return null;
+  const hrs=[];
+  for(let i=0;i<W.hourly.time.length;i++){
+    const t=W.hourly.time[i];if(t.slice(0,10)!==today)continue;
+    const h=+t.slice(11,13);if(h<nowHr)continue;
+    if((W.hourly.precipitation[i]||0)>=WET)hrs.push(h);
+  }
+  return hrs.length?{a:hrs[0],b:hrs[hrs.length-1]}:null;
+}
+function monthOutlook(c,W,CL,today){
+  if(!W||!W.daily)return null;
+  const ym=today.slice(0,7),D=W.daily,T=D.time;
+  const lastDay=new Date(Date.UTC(+ym.slice(0,4),+ym.slice(5,7),0)).getUTCDate();
+  const todayN=+today.slice(8,10);
+  let banked=0,snow=0,bDays=0,fc=0,fcDays=0,lastFc=null;
+  for(let i=0;i<T.length;i++){
+    if(T[i].slice(0,7)!==ym)continue;
+    const dn=+T[i].slice(8,10),v=D.precipitation_sum[i];
+    if(v==null)continue;
+    if(dn<todayN){banked+=v;bDays++}else{fc+=v;fcDays++;lastFc=dn}
+    if(D.snowfall_sum&&D.snowfall_sum[i]!=null)snow+=D.snowfall_sum[i];
+  }
+  const covered=lastFc||todayN-1,gapStart=covered+1,gapDays=Math.max(0,lastDay-covered);
+  let samples=[];
+  if(gapDays>0&&CL&&CL.length){
+    const byYear={};
+    CL.forEach(r=>{const m=r.d.slice(5,7),dn=+r.d.slice(8,10),y=r.d.slice(0,4);
+      if(m!==ym.slice(5,7)||dn<gapStart||dn>lastDay)return;
+      byYear[y]=(byYear[y]||0)+r.v});
+    samples=Object.values(byYear);
+  }
+  let seed=(c.id.charCodeAt(1)*7919+todayN)>>>0;
+  const rnd=()=>{seed=(seed*1103515245+12345)&0x7fffffff;return seed/0x7fffffff};
+  const gs=()=>{let u=0,v=0;while(!u)u=rnd();while(!v)v=rnd();return Math.sqrt(-2*Math.log(u))*Math.cos(2*Math.PI*v)};
+  const tot=[],N=3000;
+  for(let i=0;i<N;i++){
+    const fcErr=fc>0?fc*Math.exp(gs()*0.38):0;
+    const gap=samples.length?samples[Math.floor(rnd()*samples.length)]*Math.exp(gs()*0.12):0;
+    tot.push(banked+fcErr+gap);
+  }
+  tot.sort((a,b)=>a-b);
+  const med=q(tot,0.5),lo=q(tot,0.2),hi=q(tot,0.8);
+  const P=T0=>tot.filter(x=>x>T0).length/N;
+  const above=LADDER.filter(x=>x>med),below=LADDER.filter(x=>x<=med);
+  const picks=[below.length?below[below.length-1]:LADDER[0],above.length?above[0]:LADDER[LADDER.length-1]];
+  const thresholds=[...new Set(picks)].map(t=>({t,p:banked>t?1:P(t)}));
+  return{banked,bDays,fc,fcDays,gapDays,med,lo,hi,thresholds,lastDay,snow,
+    snowUnit:(W.daily_units&&W.daily_units.snowfall_sum)||'cm',climYears:samples.length};
+}
+
+/* ── 3. self-scoring track record ──────────────────────────────── */
+function resolveTrack(arr,obsArr,tz,today,yday){
+  const e=arr.find(x=>x.d===yday&&x.a==null);
+  if(e){
+    const yo=obsArr.filter(o=>dayKey(o.t,tz)===yday);
+    if(yo.length>=16)e.a=Math.round(Math.max(...yo.map(o=>o.temp)));
+  }
+  return arr.filter(x=>x.d>=daysAgo(21));
+}
+function trackStats(arr){
+  const done=arr.filter(x=>x.a!=null).sort((a,b)=>a.d<b.d?-1:1);
+  if(!done.length)return null;
+  const errs=done.map(x=>x.p-x.a);
+  return{n:done.length,mae:mean(errs.map(Math.abs)),
+    within2:errs.filter(e=>Math.abs(e)<=2).length,
+    last:done[done.length-1]};
+}
+async function updateTrack(c,tz,today,todayPred,obsArr){
+  const k='trk_'+c.id;
+  let arr=(await store.get(k))||[];
+  const yday=dayKey(new Date(Date.now()-864e5).toISOString(),tz);
+  arr=resolveTrack(arr,obsArr,tz,today,yday);
+  if(todayPred!=null&&hourIn(tz)<=12&&!arr.find(x=>x.d===today))
+    arr.push({d:today,p:Math.round(todayPred)});
+  await store.set(k,arr);
+  S.track[c.id]=arr;
+}
+
+/* ── derive everything for one city ────────────────────────────── */
+function derive(c,d){
+  if(!d||!d.mod)return null;
+  const tz=c.tz;
+  const today=dayKey(new Date().toISOString(),tz);
+  const nowHr=hourIn(tz);
+  const nowKey=hourKeyTz(new Date(),tz);
+  const O=d.obs||[],last=O[O.length-1];
+  const tObs=O.filter(o=>dayKey(o.t,tz)===today);
+  const obsMax=tObs.length?Math.max(...tObs.map(o=>o.temp)):null;
+  const obsNow=last?last.temp:null;
+
+  const bias=fitBias(d.mod,O,tz,nowKey);
+  const hours=blendHours(d.mod,today,W_NEAR,bias.per);
+  const spreadToday=(()=>{const v=[];
+    for(const m in d.mod){const{t,v:vv}=d.mod[m];let mx=null;
+      for(let i=0;i<t.length;i++){if(t[i].slice(0,10)!==today||vv[i]==null)continue;
+        if(mx==null||vv[i]>mx)mx=vv[i]}
+      if(mx!=null)v.push(mx)}
+    return v.length>1?(sd(v)||0.9):1.4})();
+  const t0=todayHigh(hours,nowHr,obsNow,obsMax,spreadToday);
+
+  const allDates=[...new Set(Object.values(d.mod).flatMap(m=>m.t.map(x=>x.slice(0,10))))]
+    .sort().filter(x=>x>today).slice(0,4);
+  const future=allDates.map((dt,i)=>({dt,p:futureDay(d.mod,dt,i+1,bias.per)})).filter(x=>x.p);
+
+  return{today,nowHr,hours,t0,future,bias,obsMax,obsNow,last,tObs,
+    spread:spreadToday};
+}
+
+/* ── load ──────────────────────────────────────────────────────── */
+async function load(){
+  if(S.busy)return;S.busy=true;S.errs=[];render();
+  for(let i=0;i<CITIES.length;i+=3){
+    await Promise.allSettled(CITIES.slice(i,i+3).map(async c=>{
+      const[m,o,w,cl]=await Promise.allSettled([models(c),obs(c),wet(c),climo(c)]);
+      if(m.status==='rejected')S.errs.push(`${c.city} forecast: ${m.reason.message}`);
+      if(w.status==='rejected')S.errs.push(`${c.city} rain: ${w.reason.message}`);
+      const data={mod:m.status==='fulfilled'?m.value:null,
+        obs:o.status==='fulfilled'?o.value:[],
+        wet:w.status==='fulfilled'?w.value:null};
+      if(cl.status==='fulfilled')S.climo[c.id]=cl.value;
+      data.dx=derive(c,data);
+      S.data[c.id]=data;
+      if(data.dx&&data.dx.t0)await updateTrack(c,c.tz,data.dx.today,data.dx.t0.mu,data.obs);
+    }));
+    render();
+  }
+  S.ts=new Date();S.busy=false;render();
+}
+
+/* ── views ─────────────────────────────────────────────────────── */
+function curve(c,d){
+  const dx=d.dx;if(!dx||!dx.hours)return'';
+  const tz=c.tz,W=560,H=74;
+  const hs=Object.keys(dx.hours).map(Number).sort((a,b)=>a-b);
+  if(hs.length<4)return'';
+  const off=dx.t0?dx.t0.off:0;
+  const pts=hs.map(h=>({h,v:dx.hours[h]+(h>=dx.nowHr?off*Math.max(0,1-(h-dx.nowHr)/6):0)}));
+  const op=dx.tObs.map(o=>({h:hourIn(tz,new Date(o.t)),v:o.temp}));
+  const all=pts.map(p=>p.v).concat(op.map(p=>p.v));
+  const y0=Math.min(...all)-2,y1=Math.max(...all)+2;
+  const X=h=>(h/23)*W,Y=v=>H-12-((v-y0)/((y1-y0)||1))*(H-24);
+  const line=a=>a.map(p=>`${X(p.h).toFixed(1)},${Y(p.v).toFixed(1)}`).join(' ');
+  const fut=pts.filter(p=>p.h>=dx.nowHr),past=pts.filter(p=>p.h<=dx.nowHr);
+  const labelHrs=fut.filter((p,i)=>p.h>dx.nowHr&&(p.h-dx.nowHr)%3===0&&p.h<=PEAK_END+2).slice(0,4);
+  const peakH=dx.t0&&dx.t0.peakHr!=null?dx.t0.peakHr:null;
+  const peakV=dx.t0?dx.t0.mu:null;
+  return`<div class="curve"><svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" role="img"
+    aria-label="Temperature through today in ${esc(c.city)}">
+   ${past.length>1?`<polyline fill="none" stroke="#38BDF8" stroke-width="1.3" stroke-dasharray="2 4" opacity=".45" points="${line(past)}"/>`:''}
+   ${fut.length>1?`<polyline fill="none" stroke="#38BDF8" stroke-width="1.8" stroke-dasharray="4 3" points="${line(fut)}"/>`:''}
+   ${op.length>1?`<polyline fill="none" stroke="#C8B4FF" stroke-width="2" points="${line(op)}"/>`:''}
+   ${labelHrs.map(p=>`<text x="${X(p.h).toFixed(1)}" y="${(Y(p.v)-6).toFixed(1)}" fill="#7C8895" font-size="9.5"
+     font-family="monospace" text-anchor="middle">${Math.round(p.v)}°</text>
+     <text x="${X(p.h).toFixed(1)}" y="${H-1}" fill="#4C5764" font-size="8.5" font-family="monospace" text-anchor="middle">${p.h}h</text>`).join('')}
+   ${peakH!=null&&peakV!=null?`<circle cx="${X(peakH).toFixed(1)}" cy="${Y(peakV).toFixed(1)}" r="3" fill="#FF6B35"/>
+   <text x="${clamp(X(peakH),18,W-44).toFixed(1)}" y="${Math.max(9,Y(peakV)-7).toFixed(1)}" fill="#FF6B35"
+     font-size="10" font-family="monospace" text-anchor="middle">${Math.round(peakV)}° @ ${peakH}h</text>`:''}
+   <line x1="${X(dx.nowHr).toFixed(1)}" y1="0" x2="${X(dx.nowHr).toFixed(1)}" y2="${H-10}" stroke="#4C5764" stroke-dasharray="2 4"/>
+  </svg></div>`;
+}
+function wetBlock(c,d){
+  const W=d.wet;if(!W)return'';
+  const today=dayKey(new Date().toISOString(),c.tz);
+  const R=rainToday(W,c.tz,today);
+  const M=monthOutlook(c,W,S.climo[c.id],today);
+  if(!R&&!M)return'';
+  const mn=new Date(today+'T12:00:00').toLocaleDateString([],{month:'long'});
+  let out=`<div class="wet"><div class="lbl" style="margin-bottom:9px">Rain &amp; snow</div>`;
+  if(R){
+    out+=`<div class="wetrow"><u>Today</u>`;
+    if(R.settled)out+=`<b class="fell">Already rained</b><span>≈${R.fell.toFixed(2)}" so far</span>`;
+    else{out+=`<b>${Math.round(R.p*100)}%</b><span>chance${R.fcast!=null&&R.fcast>=WET?` · ${R.fcast.toFixed(2)}" expected`:''}`;
+      if(R.win)out+=` · likely ${R.win.a===R.win.b?R.win.a+'h':R.win.a+'–'+R.win.b+'h'}`;
+      out+=`</span>`}
+    out+=`</div>`;
+  }
+  if(M){
+    const tot=Math.max(M.med,0.01);
+    const wB=clamp(M.banked/tot*100,0,100),wF=clamp(M.fc/tot*100,0,100-wB);
+    out+=`<div class="wetrow"><u>${esc(mn)}</u><b class="fell">${M.banked.toFixed(2)}"</b>
+      <span>banked over ${M.bDays} day${M.bDays===1?'':'s'} · can't un-fall</span></div>
+     <div class="bar"><i class="banked" style="width:${wB.toFixed(1)}%"></i><i class="fc" style="width:${wF.toFixed(1)}%"></i></div>
+     <div class="wetrow"><u>Month end</u><b>${M.med.toFixed(2)}"</b>
+       <span>${M.lo.toFixed(2)}–${M.hi.toFixed(2)}" · ${M.fcDays}d forecast${M.gapDays?` + ${M.gapDays}d from ${M.climYears} yrs`:''}</span></div>`;
+    if(M.snow>0.05)out+=`<div class="wetrow"><u>Snow</u><b>${M.snow.toFixed(1)}</b><span>${esc(M.snowUnit)} this month</span></div>`;
+    out+=`<div class="thr">${M.thresholds.map(x=>{
+      const set=x.p>=0.999,dead=x.p<=0.02;
+      return`<div class="tchip ${set?'set':dead?'dead':''}"><u>above ${x.t}"</u>
+        <b>${set?'✓ settled':dead?'—':Math.round(x.p*100)+'%'}</b></div>`}).join('')}</div>`;
+  }
+  return out+`</div>`;
+}
+function card(c){
+  const d=S.data[c.id];
+  if(!d)return`<div class="city skel"><div class="name"><b>${esc(c.city)}</b><span>${esc(c.site)}</span></div>
+    <div class="big"><em>—</em></div></div>`;
+  const head=`<div class="name"><b>${esc(c.city)}</b><span>${esc(c.site)}</span>${
+    d.dx&&d.dx.t0&&d.dx.t0.locked?'<span class="locked">HIGH LOCKED</span>':''}</div>`;
+  if(!d.dx||!d.dx.t0)return`<div class="city">${head}
+    <p class="lbl" style="margin:12px 0 4px">Forecast unavailable</p>${wetBlock(c,d)}</div>`;
+  const dx=d.dx,t0=dx.t0;
+  const agree=clamp(1-(dx.spread-0.6)/4.4,0,1);
+  const col=agree>0.66?'var(--gain)':agree>0.35?'var(--gold)':'var(--ember)';
+  const word=agree>0.66?'models agree closely':agree>0.35?'some model disagreement':'models disagree a lot';
+  const dow=s=>new Date(s+'T12:00:00').toLocaleDateString([],{weekday:'short'});
+  const tk=trackStats(S.track[c.id]||[]);
+  let chk='';
+  if(dx.bias.rmse!=null||tk){
+    chk=`<div class="chk">`;
+    if(dx.bias.rmse!=null){
+      const b=dx.bias.bias;
+      chk+=`24h vs thermometer: models ${Math.abs(b)<0.3?'on target':`ran ${b>0?'hot':'cold'} <b>${Math.abs(b).toFixed(1)}°</b>`} · typical miss <b>±${dx.bias.rmse.toFixed(1)}°</b> — corrected`;
+    }
+    if(tk){
+      const y=tk.last,hit=Math.abs(y.p-y.a)<=2;
+      chk+=`${dx.bias.rmse!=null?'<br>':''}Yesterday called <b>${y.p}°</b>, hit <b>${y.a}°</b> <span class="${hit?'good':'bad'}">${y.p-y.a>0?'+':''}${y.p-y.a}°</span>`;
+      if(tk.n>1)chk+=` · ${tk.n}d record: MAE ${tk.mae.toFixed(1)}°, ${tk.within2}/${tk.n} within ±2°`;
+    }
+    chk+=`</div>`;
+  }
+  return`<div class="city">${head}
+    <div class="lbl">Today's high</div>
+    <div class="big"><em>${Math.round(t0.mu)}°</em>
+      <div class="rng"><u>likely range</u>${Math.round(t0.lo)}° – ${Math.round(t0.hi)}°</div></div>
+    ${curve(c,d)}
+    <div class="now">
+      <div><u>Now</u><b>${dx.obsNow!=null?Math.round(dx.obsNow)+'°':'—'}</b></div>
+      <div><u>Max so far</u><b class="o">${dx.obsMax!=null?Math.round(dx.obsMax)+'°':'—'}</b></div>
+      <div><u>Dew pt</u><b>${dx.last&&dx.last.dew!=null?Math.round(dx.last.dew)+'°':'—'}</b></div>
+      <div><u>Sky</u><b style="font-size:12px">${dx.last?esc(dx.last.sky):'—'}</b></div></div>
+    <div class="conf"><span>${word}</span><span class="meter"><i style="width:${(agree*100).toFixed(0)}%;background:${col}"></i></span>
+      <span>±${t0.sigma.toFixed(1)}°</span></div>
+    ${chk}
+    <div class="days">${dx.future.map(x=>`<div class="day"><u>${dow(x.dt)}</u>
+      <b>${Math.round(x.p.mu)}°</b><i>±${x.p.sigma.toFixed(0)}</i></div>`).join('')}</div>
+    ${wetBlock(c,d)}
+  </div>`;
+}
+function render(){
+  document.getElementById('errs').innerHTML=S.errs.length
+    ?`<div class="err">${S.errs.slice(0,3).map(esc).join('<br>')}${
+      S.errs.some(e=>/Failed to fetch|NetworkError|Load failed/i.test(e))
+      ?'<br><br>A blocked request means the browser refused a cross-origin call. Serve this over http rather than opening the file directly.':''}</div>`:'';
+  document.getElementById('list').innerHTML=CITIES.map(card).join('')||`<div class="msg"><b>Nothing loaded</b>Tap refresh.</div>`;
+  const rf=document.getElementById('rf');
+  rf.disabled=S.busy;rf.textContent=S.busy?'Loading…':'Refresh';
+  document.getElementById('when').innerHTML=S.ts
+    ?`${S.ts.toLocaleDateString([],{weekday:'short',month:'short',day:'numeric'})}<br>${S.ts.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})}`:'—';
+  const rs=Object.values(S.data).map(d=>d.dx&&d.dx.bias&&d.dx.bias.rmse).filter(x=>x!=null);
+  document.getElementById('trust').innerHTML=rs.length
+    ?`Self-check vs ${rs.length} station thermometers, last 24h: typical miss <b>±${mean(rs).toFixed(1)}°</b> after correction — every forecast below has that correction applied`:'';
+  document.getElementById('foot').textContent=S.ts
+    ?'Every load, each model\'s last 30 hours are graded against the station thermometer and its measured bias is removed before it votes. The rest of today starts from the current observation. The morning call is stored and scored against reality the next day — the record on each card includes the misses.':'';
+}
+document.getElementById('rf').onclick=load;
+render();load();
+</script>
+</body>
+</html>
