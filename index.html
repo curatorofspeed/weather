@@ -18,7 +18,7 @@
 
 /* light: warmer paper, darkened accents so nothing drops below contrast */
 :root[data-theme="light"]{
---carbon:#F6F4F1;--slate:#FFFFFF;--panel:#F0EDE8;--rule:#E1DCD4;
+--carbon:#F6F4F1;--slate:#FFFFFF;--rule:#E1DCD4;
 --vapor:#15191E;--haze:#59626C;--dim:#6E767F;
 --pulse:#0B76B4;--ember:#C9451A;--obs:#6743B8;--gain:#12704A;--gold:#8A5E09;
 --loss:#B5342B;--rain:#1179AB;--cool:#2A5BBE;
@@ -209,6 +209,7 @@ const hourKeyTz=(d,tz)=>{const f=new Intl.DateTimeFormat('en-CA',{timeZone:tz,ye
 const isoDay=d=>d.toISOString().slice(0,10);
 const daysAgo=n=>isoDay(new Date(Date.now()-n*864e5));
 const nextDay=d=>{const[y,m,x]=d.split('-').map(Number);return isoDay(new Date(Date.UTC(y,m-1,x+1)))};
+const prevDay=d=>{const[y,m,x]=d.split('-').map(Number);return isoDay(new Date(Date.UTC(y,m-1,x-1)))};
 const q=(sorted,p)=>{if(!sorted.length)return null;const i=clamp(p,0,1)*(sorted.length-1),lo=Math.floor(i),hi=Math.ceil(i);
   return lo===hi?sorted[lo]:sorted[lo]+(sorted[hi]-sorted[lo])*(i-lo)};
 const store={async get(k){try{if(window.storage){const r=await window.storage.get(k,false);return r?JSON.parse(r.value):null}}catch(e){}return null},
@@ -236,6 +237,16 @@ function climateKeys(date,dst){
   for(let h=start;h<24;h++)out.push(`${date}T${String(h).padStart(2,'0')}`);
   if(dst)out.push(`${nextDay(date)}T00`);
   return out;
+}
+/* the climate day that is currently open: under DST the 00:00 hour
+   still belongs to yesterday's 1am–1am window */
+function climateDate(tz,d){
+  d=d||new Date();
+  const cal=new Intl.DateTimeFormat('en-CA',{timeZone:tz,year:'numeric',month:'2-digit',day:'2-digit'}).format(d);
+  if(!isDST(tz,d))return cal;
+  let h=+new Intl.DateTimeFormat('en-GB',{timeZone:tz,hour:'2-digit',hour12:false}).format(d);
+  if(h===24)h=0;
+  return h===0?prevDay(cal):cal;
 }
 function calendarKeys(date){
   const out=[];for(let h=0;h<24;h++)out.push(`${date}T${String(h).padStart(2,'0')}`);return out;
@@ -330,7 +341,11 @@ function todayExtreme(win,keys,nowKey,obsNow,obsBound,spread,dir){
   let off=0;
   if(obsNow!=null&&win[nowKey]!=null)off=obsNow-win[nowKey].v;
   const rem=present.filter(k=>k>=nowKey);
-  const hrsFrom=k=>{const i=present.indexOf(k),j=present.indexOf(nowKey);return j<0?0:Math.max(0,i-j)};
+  /* decay by real elapsed hours, so a nowKey outside the window (or a gap
+     in the series) can't collapse the decay and smear the offset all day */
+  const hAbs=k=>Date.UTC(+k.slice(0,4),+k.slice(5,7)-1,+k.slice(8,10),+k.slice(11,13))/36e5;
+  const n0=hAbs(nowKey);
+  const hrsFrom=k=>Math.max(0,hAbs(k)-n0);
   let best=null,bestKey=null;
   for(const k of rem){
     const v=win[k].v+off*Math.max(0,1-hrsFrom(k)/6);
@@ -362,13 +377,23 @@ function frontalDrop(win,keys,nowKey,obsBound){
   }
   return worst!=null?{v:worst,hr:+wk.slice(11,13)}:null;
 }
+function modelExtreme(bag,keys,dir,minCov){
+  let best=null,n=0;
+  for(const k of keys){const v=bag[k];if(v==null)continue;n++;
+    if(best==null||(dir>0?v>best:v<best))best=v}
+  /* a model that only covers part of the day produces a biased extreme —
+     HRRR runs out mid-period and would drag the high down. Require coverage. */
+  return (best!=null&&n>=Math.ceil(keys.length*(minCov==null?0.85:minCov)))?{v:best,n}:null;
+}
 function futureExtreme(cs,keys,wset,dir){
   const vals=[];
   for(const m in cs){
-    let best=null;
-    for(const k of keys){const v=cs[m][k];if(v==null)continue;
-      if(best==null||(dir>0?v>best:v<best))best=v}
-    if(best!=null)vals.push({m,v:best});
+    const e=modelExtreme(cs[m],keys,dir);
+    if(e)vals.push({m,v:e.v});
+  }
+  if(!vals.length)for(const m in cs){          // nothing covers it — fall back
+    const e=modelExtreme(cs[m],keys,dir,0.4);
+    if(e)vals.push({m,v:e.v});
   }
   if(!vals.length)return null;
   let n=0,d=0;
@@ -425,7 +450,7 @@ function trackStats(arr){
 async function updateTrack(c,tz,today,predHi,predLo,obsArr,dst){
   const k='trk_'+c.id;
   let arr=(await store.get(k))||[];
-  const yday=dayKey(new Date(Date.now()-864e5).toISOString(),tz);
+  const yday=prevDay(today);
   const open=arr.find(x=>x.d===yday&&(x.a==null||x.al==null));
   if(open){
     const cli=await fetchCli(c.id,yday);
@@ -445,7 +470,7 @@ async function updateTrack(c,tz,today,predHi,predLo,obsArr,dst){
 function derive(c,d){
   if(!d||!d.mod)return null;
   const tz=c.tz,now=new Date();
-  const today=dayKey(now.toISOString(),tz);
+  const today=climateDate(tz,now);
   const nowHr=hourIn(tz),nowKey=hourKeyTz(now,tz);
   const dst=isDST(tz,now);
   const O=d.obs||[],last=O[O.length-1];
@@ -464,8 +489,7 @@ function derive(c,d){
   const obsNow=last?last.temp:null;
 
   const spread=(()=>{const v=[];
-    for(const m in cs){let mx=null;for(const k of cKeys){const x=cs[m][k];if(x!=null&&(mx==null||x>mx))mx=x}
-      if(mx!=null)v.push(mx)}
+    for(const m in cs){const e=modelExtreme(cs[m],cKeys,+1);if(e)v.push(e.v)}
     return v.length>1?(sd(v)||0.9):1.4})();
 
   const hi=todayExtreme(win,cKeys,nowKey,obsNow,obsMax,spread,+1);
@@ -487,7 +511,7 @@ function derive(c,d){
   const dates=[...new Set(Object.values(d.mod).flatMap(m=>m.t.map(x=>x.slice(0,10))))]
     .sort().filter(x=>x>today).slice(0,4);
   const future=dates.map((dt,i)=>{
-    const ks=climateKeys(dt,isDST(tz,new Date(dt+'T12:00:00')));
+    const ks=climateKeys(dt,isDST(tz,new Date(dt+'T18:00:00Z')));
     const w=i===0?W_NEAR:W_FAR;
     return{dt,hi:futureExtreme(cs,ks,w,+1),lo:futureExtreme(cs,ks,w,-1)};
   }).filter(x=>x.hi&&x.lo);
@@ -606,8 +630,14 @@ function curve(c,d){
   const lab=fut.filter(p=>p.i>nowI&&(p.i-nowI)%4===0).slice(0,4);
   const mark=(ext,color,tag)=>{
     if(!ext)return'';
-    const i=ext.peakKey!=null?idx(ext.peakKey):(()=>{const t=op.concat(pts);
-      let b=null;for(const p of t){if(Math.abs(p.v-ext.mu)<0.35&&(b==null||p.i<b))b=p.i}return b??nowI})();
+    let i;
+    if(ext.peakKey!=null)i=idx(ext.peakKey);
+    else{ /* bound came from observations — mark where that value occurred */
+      let b=null,bd=Infinity;
+      for(const p of op.concat(pts)){const d2=Math.abs(p.v-ext.mu);
+        if(d2<bd-1e-9||(Math.abs(d2-bd)<1e-9&&b!=null&&p.i<b)){bd=d2;b=p.i}}
+      i=b==null?nowI:b;
+    }
     if(i<0)return'';
     return`<circle cx="${X(i).toFixed(1)}" cy="${Y(ext.mu).toFixed(1)}" r="3" fill="${color}"/>
     <text x="${clamp(X(i),22,W-38).toFixed(1)}" y="${(tag==='hi'?Math.max(9,Y(ext.mu)-7):Math.min(H-16,Y(ext.mu)+13)).toFixed(1)}"
@@ -662,7 +692,7 @@ function card(c){
   const head=`<div class="name"><b>${esc(c.city)}</b><span class="site">${esc(c.site)}</span>
     ${dx&&dx.hi&&dx.hi.locked?'<span class="lockbadge">HIGH LOCKED</span>':''}
     ${dx&&dx.lo&&dx.lo.locked?'<span class="lockbadge">LOW LOCKED</span>':''}
-    ${dx&&dx.dst?'<span class="lockbadge" style="border-color:var(--rule);color:var(--dim)">CLIMATE DAY 1–1</span>':''}</div>`;
+    ${dx&&dx.dst?`<span class="lockbadge" style="border-color:var(--rule);color:var(--dim)">CLIMATE DAY ${esc(dx.today.slice(5))} · 1–1</span>`:''}</div>`;
   if(!dx||!dx.hi)return`<div class="city">${head}
     <p style="font-family:var(--mono);font-size:10px;color:var(--haze);margin:12px 0 4px">FORECAST UNAVAILABLE</p>${wetBlock(c,d)}</div>`;
   const agree=clamp(1-(dx.spread-0.6)/4.4,0,1);
@@ -747,7 +777,7 @@ function render(){
     ?`<span class="tally"><b>${bothN}</b> fully settled · <s>${oneN}</s> half settled · ${locks.length-bothN-oneN} in play</span>`:'')
     +(rs.length?`${locks.length?' &nbsp;·&nbsp; ':''}typical miss <b>±${mean(rs).toFixed(1)}°</b> after correction`:'');
   document.getElementById('foot').textContent=S.ts
-    ?'Highs and lows are computed over the NWS climate day — midnight to midnight local standard time, so 1am–1am under daylight saving. The observed max floors the high; the observed min caps the low. A low only locks when no remaining hour can undercut it. Yesterday is graded against the NWS Daily Climate Report.':'';
+    ?'Highs and lows are computed over the NWS climate day — midnight to midnight local standard time, so 1am–1am under daylight saving, which means the midnight hour still belongs to the previous day. The observed max floors the high; the observed min caps the low. A low only locks when no remaining hour can undercut it. Yesterday is graded against the NWS Daily Climate Report.':'';
 }
 document.getElementById('th').onclick=async()=>{
   const t=document.documentElement.dataset.theme==='light'?'dark':'light';
