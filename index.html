@@ -104,6 +104,12 @@ main{padding:14px 12px 40px;max-width:640px;margin:0 auto}
   padding:12px 14px;font-family:var(--mono);font-size:11px;color:var(--errfg);margin-bottom:12px;line-height:1.7}
 .foot{font-family:var(--mono);font-size:10px;color:var(--dim);line-height:1.8;padding:6px 4px 0}
 .skel{opacity:.4}
+.nowline{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;margin:0 0 12px;font-family:var(--mono)}
+.nowline u{text-decoration:none;font-size:10px;letter-spacing:.11em;text-transform:uppercase;color:var(--haze)}
+.nowline b{font-size:30px;font-weight:500;letter-spacing:-.03em;color:var(--obs);line-height:1}
+.nowline .tr{font-size:12px;color:var(--haze)}
+.nowline i{font-style:normal;font-size:10.5px;color:var(--dim);margin-left:auto;text-align:right}
+.nowline i.stale{color:var(--gold)}
 .note-src{font-family:var(--mono);font-size:10px;color:var(--gold);margin:2px 0 6px}
 .group{font-family:var(--mono);font-size:10px;letter-spacing:.14em;text-transform:uppercase;
   color:var(--haze);margin:2px 2px 9px;display:flex;align-items:center;gap:10px}
@@ -567,6 +573,22 @@ function derive(c,d){
   const obsMax=inWin.length?Math.max(...inWin.map(o=>o.temp)):null;
   const obsMin=inWin.length?Math.min(...inWin.map(o=>o.temp)):null;
   const obsNow=last?last.temp:null;
+  /* how old is the station report, and which way is it going */
+  const obsAge=last?(Date.now()-new Date(last.t))/60000:null;   // minutes
+  const stale=obsAge!=null&&obsAge>95;                           // ASOS reports hourly
+  let trend=null;
+  if(O.length>=2){
+    const tail=O.slice(-4);
+    const dt=(new Date(tail[tail.length-1].t)-new Date(tail[0].t))/36e5;
+    if(dt>=0.4)trend=(tail[tail.length-1].temp-tail[0].temp)/dt;
+  }
+  /* if the station is silent, say so and fall back to the model rather
+     than printing a dash */
+  let nowTemp=obsNow,nowSrc='obs';
+  if(nowTemp==null){
+    const mv=win[nowKey]?win[nowKey].v:null;
+    if(mv!=null){nowTemp=mv;nowSrc='model'}
+  }
 
   const spread=(()=>{const v=[];
     for(const m in cs){const e=modelExtreme(cs[m],cKeys,+1);if(e)v.push(e.v)}
@@ -597,7 +619,7 @@ function derive(c,d){
   }).filter(x=>x.hi&&x.lo);
 
   return{today,nowHr,nowKey,dst,win,cKeys,hi,lo,drop,seam,future,bias,
-    obsMax,obsMin,obsNow,last,inWin,spread};
+    obsMax,obsMin,obsNow,nowTemp,nowSrc,obsAge,stale,trend,last,inWin,spread};
 }
 
 /* ── rain (unchanged) ────────────────────────────────────────────── */
@@ -798,6 +820,24 @@ function wetBlock(c,d){ /* d.cli = climate report */
   }
   return out+`</div>`;
 }
+function nowLine(c,dx){
+  if(dx.nowTemp==null)
+    return`<div class="nowline"><u>Now</u><b style="color:var(--dim)">—</b>
+      <i class="stale">no current reading from ${esc(c.id)}</i></div>`;
+  const t=dx.trend;
+  const arrow=t==null?'':(t>0.4?'▲':t<-0.4?'▼':'▬');
+  const trendTxt=t==null?'':`${arrow} ${t>0?'+':''}${t.toFixed(1)}°/hr`;
+  const age=dx.obsAge==null?null:Math.round(dx.obsAge);
+  let meta;
+  if(dx.nowSrc==='model')meta=`<i class="stale">station silent — model estimate</i>`;
+  else{
+    const clock=new Date(dx.last.t).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit',timeZone:c.tz});
+    meta=`<i class="${dx.stale?'stale':''}">${esc(c.site.split('—')[0].trim())} · ${clock} local`
+        +`${age!=null?` · ${age<1?'just now':age+' min ago'}`:''}</i>`;
+  }
+  return`<div class="nowline"><u>Now</u><b>${Math.round(dx.nowTemp)}°</b>
+    ${trendTxt?`<span class="tr">${trendTxt}</span>`:''}${meta}</div>`;
+}
 function card(c){
   const d=S.data[c.id];
   if(!d)return`<div class="city skel"><div class="name"><b>${esc(c.city)}</b><span class="site">${esc(c.site)}</span></div>
@@ -829,6 +869,7 @@ function card(c){
   if(dx.drop)warn+=`<div class="warn"><b>Low not done.</b> Morning min was ${Math.round(dx.obsMin)}°, but ${Math.round(dx.drop.v)}° is forecast around ${dx.drop.hr}h — a later drop still counts for today.</div>`;
   if(dx.seam)warn+=`<div class="warn"><b>Climate-day seam.</b> Calendar midnight–midnight gives ${Math.round(dx.seam.cal)}°, the settling 1am–1am window gives ${Math.round(dx.seam.cli)}°. We use the settling window.</div>`;
   return`<div class="city">${head}
+    ${nowLine(c,dx)}
     <div class="pair">
       <div class="half hi"><u>High today</u><em>${Math.round(dx.hi.mu)}°</em>
         <div class="rng">${Math.round(dx.hi.lo)}° – ${Math.round(dx.hi.hi)}°</div></div>
@@ -837,7 +878,6 @@ function card(c){
     </div>
     ${curve(c,d)}
     <div class="now">
-      <div><u>Now</u><b>${dx.obsNow!=null?Math.round(dx.obsNow)+'°':'—'}</b></div>
       <div><u>Max so far</u><b class="o">${dx.obsMax!=null?Math.round(dx.obsMax)+'°':'—'}</b></div>
       <div><u>Min so far</u><b class="c">${dx.obsMin!=null?Math.round(dx.obsMin)+'°':'—'}</b></div>
       <div><u>Dew pt</u><b>${dx.last&&dx.last.dew!=null?Math.round(dx.last.dew)+'°':'—'}</b></div>
@@ -887,7 +927,11 @@ function render(){
   const locks=CITIES.map(c=>{const dx=S.data[c.id]&&S.data[c.id].dx;
     if(!dx||!dx.hi)return null;return (dx.hi.locked?1:0)+(dx.lo&&dx.lo.locked?1:0)}).filter(x=>x!=null);
   const bothN=locks.filter(x=>x>=2).length, oneN=locks.filter(x=>x===1).length;
-  document.getElementById('trust').innerHTML=(locks.length
+  const rep=CITIES.map(c=>{const dx=S.data[c.id]&&S.data[c.id].dx;return dx?dx.nowSrc:null}).filter(Boolean);
+  const live=rep.filter(x=>x==='obs').length;
+  document.getElementById('trust').innerHTML=(rep.length&&live<rep.length
+    ?`<span class="tally"><s>${live}/${rep.length}</s> stations reporting &nbsp;·&nbsp; </span>`:'')
+    +(locks.length
     ?`<span class="tally"><b>${bothN}</b> fully settled · <s>${oneN}</s> half settled · ${locks.length-bothN-oneN} in play</span>`:'')
     +(rs.length?`${locks.length?' &nbsp;·&nbsp; ':''}typical miss <b>±${mean(rs).toFixed(1)}°</b> after correction`:'');
   document.getElementById('foot').textContent=S.ts
