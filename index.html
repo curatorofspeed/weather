@@ -23,6 +23,7 @@ h1 i{font-style:normal;color:var(--ember)}
   font-family:var(--mono);font-size:11px;padding:6px 11px;cursor:pointer}
 .refresh:hover{border-color:var(--ember);color:var(--ember)}
 .refresh:disabled{opacity:.45;cursor:default}
+select.refresh{appearance:auto;background:var(--slate)}
 .htrust{font-family:var(--mono);font-size:10.5px;color:var(--haze);margin-top:7px}
 .htrust b{color:var(--gain);font-weight:500}
 main{padding:14px 12px 40px;max-width:640px;margin:0 auto}
@@ -83,6 +84,7 @@ main{padding:14px 12px 40px;max-width:640px;margin:0 auto}
 <header>
   <div class="hrow">
     <h1>Daily<i>·</i>Highs</h1>
+    <select class="refresh" id="fCity" aria-label="Filter city"><option value="">All cities</option></select>
     <button class="refresh" id="rf">Refresh</button>
     <div class="when" id="when">—</div>
   </div>
@@ -108,15 +110,25 @@ main{padding:14px 12px 40px;max-width:640px;margin:0 auto}
 
 const CITIES=[
  {id:'KNYC',city:'New York',site:'Central Park',lat:40.7794,lon:-73.9692,tz:'America/New_York'},
- {id:'KLAX',city:'Los Angeles',site:'LAX',lat:33.9425,lon:-118.4081,tz:'America/Los_Angeles'},
- {id:'KMDW',city:'Chicago',site:'Midway',lat:41.7861,lon:-87.7524,tz:'America/Chicago'},
+ {id:'KMDW',city:'Chicago',site:'Midway — not O\'Hare',lat:41.7861,lon:-87.7524,tz:'America/Chicago'},
  {id:'KMIA',city:'Miami',site:'Miami Intl',lat:25.7906,lon:-80.2871,tz:'America/New_York'},
  {id:'KAUS',city:'Austin',site:'Bergstrom',lat:30.1975,lon:-97.6664,tz:'America/Chicago'},
+ {id:'KLAX',city:'Los Angeles',site:'LAX',lat:33.9425,lon:-118.4081,tz:'America/Los_Angeles'},
  {id:'KDEN',city:'Denver',site:'Denver Intl',lat:39.8617,lon:-104.6731,tz:'America/Denver'},
+ {id:'KPHX',city:'Phoenix',site:'Sky Harbor',lat:33.4342,lon:-112.0116,tz:'America/Phoenix'},
  {id:'KPHL',city:'Philadelphia',site:'PHL',lat:39.8683,lon:-75.2311,tz:'America/New_York'},
+ {id:'KHOU',city:'Houston',site:'Hobby — not Bush',lat:29.6459,lon:-95.2769,tz:'America/Chicago'},
+ {id:'KMSP',city:'Minneapolis',site:'MSP',lat:44.8848,lon:-93.2223,tz:'America/Chicago'},
+ {id:'KOKC',city:'Oklahoma City',site:'Will Rogers',lat:35.3931,lon:-97.6008,tz:'America/Chicago'},
+ {id:'KSFO',city:'San Francisco',site:'SFO',lat:37.6188,lon:-122.3750,tz:'America/Los_Angeles'},
+ {id:'KDCA',city:'Washington',site:'National',lat:38.8512,lon:-77.0402,tz:'America/New_York'},
  {id:'KBOS',city:'Boston',site:'Logan',lat:42.3606,lon:-71.0106,tz:'America/New_York'},
- {id:'KATL',city:'Atlanta',site:'Hartsfield',lat:33.6301,lon:-84.4418,tz:'America/New_York'},
+ {id:'KDFW',city:'Dallas',site:'DFW — not Love',lat:32.8998,lon:-97.0403,tz:'America/Chicago'},
  {id:'KSEA',city:'Seattle',site:'SeaTac',lat:47.4444,lon:-122.3138,tz:'America/Los_Angeles'},
+ {id:'KLAS',city:'Las Vegas',site:'Harry Reid',lat:36.0840,lon:-115.1537,tz:'America/Los_Angeles'},
+ {id:'KATL',city:'Atlanta',site:'Hartsfield',lat:33.6301,lon:-84.4418,tz:'America/New_York'},
+ {id:'KSAT',city:'San Antonio',site:'San Antonio Intl',lat:29.5337,lon:-98.4698,tz:'America/Chicago'},
+ {id:'KMSY',city:'New Orleans',site:'Armstrong Intl',lat:29.9934,lon:-90.2581,tz:'America/Chicago'},
 ];
 const MODELS=['gfs_hrrr','ncep_nbm_conus','ecmwf_ifs025','gfs_seamless'];
 const W_NEAR={gfs_hrrr:40,ncep_nbm_conus:30,ecmwf_ifs025:20,gfs_seamless:10};
@@ -348,12 +360,34 @@ function monthOutlook(c,W,CL,today){
     snowUnit:(W.daily_units&&W.daily_units.snowfall_sum)||'cm',climYears:samples.length};
 }
 
+/* ── settlement source: the NWS Daily Climate Report (CLI) ─────────
+   The contract settles on the CLI high, not the METAR max. CLI can
+   print 1° above the hourly obs (spikes between obs are captured by
+   the 6-hourly max groups), so we grade against CLI when we can get
+   it and fall back to the obs max when we can't. */
+function parseCliHigh(v){
+  if(!v)return null;
+  const rows=v.results||v.data||(Array.isArray(v)?v:[v]);
+  for(const x of rows||[]){
+    const h=x.high??x.high_temperature??(x.temperature&&x.temperature.high);
+    const n=parseFloat(h);
+    if(isFinite(n)&&n>=-30&&n<=130)return Math.round(n);
+  }
+  return null;
+}
+async function fetchCliHigh(stationId,date){
+  try{
+    return parseCliHigh(await jget(
+      `https://mesonet.agron.iastate.edu/json/cli.py?station=${stationId}&date=${date}`));
+  }catch(e){return null}
+}
+
 /* ── 3. self-scoring track record ──────────────────────────────── */
 function resolveTrack(arr,obsArr,tz,today,yday){
   const e=arr.find(x=>x.d===yday&&x.a==null);
   if(e){
     const yo=obsArr.filter(o=>dayKey(o.t,tz)===yday);
-    if(yo.length>=16)e.a=Math.round(Math.max(...yo.map(o=>o.temp)));
+    if(yo.length>=16){e.a=Math.round(Math.max(...yo.map(o=>o.temp)));e.src='obs'}
   }
   return arr.filter(x=>x.d>=daysAgo(21));
 }
@@ -369,6 +403,11 @@ async function updateTrack(c,tz,today,todayPred,obsArr){
   const k='trk_'+c.id;
   let arr=(await store.get(k))||[];
   const yday=dayKey(new Date(Date.now()-864e5).toISOString(),tz);
+  const open=arr.find(x=>x.d===yday&&x.a==null);
+  if(open){
+    const h=await fetchCliHigh(c.id,yday);
+    if(h!=null){open.a=h;open.src='CLI'}
+  }
   arr=resolveTrack(arr,obsArr,tz,today,yday);
   if(todayPred!=null&&hourIn(tz)<=12&&!arr.find(x=>x.d===today))
     arr.push({d:today,p:Math.round(todayPred)});
@@ -409,8 +448,8 @@ function derive(c,d){
 /* ── load ──────────────────────────────────────────────────────── */
 async function load(){
   if(S.busy)return;S.busy=true;S.errs=[];render();
-  for(let i=0;i<CITIES.length;i+=3){
-    await Promise.allSettled(CITIES.slice(i,i+3).map(async c=>{
+  for(let i=0;i<CITIES.length;i+=5){
+    await Promise.allSettled(CITIES.slice(i,i+5).map(async c=>{
       const[m,o,w,cl]=await Promise.allSettled([models(c),obs(c),wet(c),climo(c)]);
       if(m.status==='rejected')S.errs.push(`${c.city} forecast: ${m.reason.message}`);
       if(w.status==='rejected')S.errs.push(`${c.city} rain: ${w.reason.message}`);
@@ -513,7 +552,7 @@ function card(c){
     }
     if(tk){
       const y=tk.last,hit=Math.abs(y.p-y.a)<=2;
-      chk+=`${dx.bias.rmse!=null?'<br>':''}Yesterday called <b>${y.p}°</b>, hit <b>${y.a}°</b> <span class="${hit?'good':'bad'}">${y.p-y.a>0?'+':''}${y.p-y.a}°</span>`;
+      chk+=`${dx.bias.rmse!=null?'<br>':''}Yesterday called <b>${y.p}°</b>, settled <b>${y.a}°</b>${y.src==='CLI'?' <span style="color:var(--dim)">(climate report)</span>':''} <span class="${hit?'good':'bad'}">${y.p-y.a>0?'+':''}${y.p-y.a}°</span>`;
       if(tk.n>1)chk+=` · ${tk.n}d record: MAE ${tk.mae.toFixed(1)}°, ${tk.within2}/${tk.n} within ±2°`;
     }
     chk+=`</div>`;
@@ -541,7 +580,8 @@ function render(){
     ?`<div class="err">${S.errs.slice(0,3).map(esc).join('<br>')}${
       S.errs.some(e=>/Failed to fetch|NetworkError|Load failed/i.test(e))
       ?'<br><br>A blocked request means the browser refused a cross-origin call. Serve this over http rather than opening the file directly.':''}</div>`:'';
-  document.getElementById('list').innerHTML=CITIES.map(card).join('')||`<div class="msg"><b>Nothing loaded</b>Tap refresh.</div>`;
+  const fc=document.getElementById('fCity').value;
+  document.getElementById('list').innerHTML=CITIES.filter(c=>!fc||c.id===fc).map(card).join('')||`<div class="msg"><b>Nothing loaded</b>Tap refresh.</div>`;
   const rf=document.getElementById('rf');
   rf.disabled=S.busy;rf.textContent=S.busy?'Loading…':'Refresh';
   document.getElementById('when').innerHTML=S.ts
@@ -550,9 +590,12 @@ function render(){
   document.getElementById('trust').innerHTML=rs.length
     ?`Self-check vs ${rs.length} station thermometers, last 24h: typical miss <b>±${mean(rs).toFixed(1)}°</b> after correction — every forecast below has that correction applied`:'';
   document.getElementById('foot').textContent=S.ts
-    ?'Every load, each model\'s last 30 hours are graded against the station thermometer and its measured bias is removed before it votes. The rest of today starts from the current observation. The morning call is stored and scored against reality the next day — the record on each card includes the misses.':'';
+    ?'Every load, each model\'s last 30 hours are graded against the station thermometer and its bias removed before it votes; the rest of today starts from the current observation. Yesterday\'s call is graded against the NWS Daily Climate Report — the number these markets settle on. The climate report can print 1\u00B0 above the hourly obs, so the observed max is a conservative floor. Climate days run on standard time year-round; for daily highs the difference almost never matters.':'';
 }
 document.getElementById('rf').onclick=load;
+CITIES.forEach(c=>{const o=document.createElement('option');o.value=c.id;o.textContent=c.city;
+  document.getElementById('fCity').appendChild(o)});
+document.getElementById('fCity').onchange=render;
 render();load();
 </script>
 </body>
