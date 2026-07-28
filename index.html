@@ -104,6 +104,14 @@ main{padding:14px 12px 40px;max-width:640px;margin:0 auto}
   padding:12px 14px;font-family:var(--mono);font-size:11px;color:var(--errfg);margin-bottom:12px;line-height:1.7}
 .foot{font-family:var(--mono);font-size:10px;color:var(--dim);line-height:1.8;padding:6px 4px 0}
 .skel{opacity:.4}
+.clocks{display:flex;gap:10px;flex-wrap:wrap;font-family:var(--mono);font-size:10.5px;color:var(--haze);
+  margin:0 0 12px;padding:8px 10px;border-radius:8px;background:var(--soft);border:1px solid var(--rule)}
+.clocks span{display:flex;gap:5px;align-items:baseline;white-space:nowrap}
+.clocks b{color:var(--vapor);font-weight:500;font-variant-numeric:tabular-nums}
+.clocks .day b{color:var(--obs)}
+.clocks .gap b{color:var(--gold)}
+.clocks .done,.clocks .done b{color:var(--dim)}
+.clocks .fixed{color:var(--gold)}
 .nowline{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;margin:0 0 12px;font-family:var(--mono)}
 .nowline u{text-decoration:none;font-size:10px;letter-spacing:.11em;text-transform:uppercase;color:var(--haze)}
 .nowline b{font-size:30px;font-weight:500;letter-spacing:-.03em;color:var(--obs);line-height:1}
@@ -267,6 +275,37 @@ function climateKeys(date,dst){
   for(let h=start;h<24;h++)out.push(`${date}T${String(h).padStart(2,'0')}`);
   if(dst)out.push(`${nextDay(date)}T00`);
   return out;
+}
+/* the UTC instant whose wall-clock reading in `tz` is dateStr hh:mm.
+   Refines once so DST transitions land on the right side. */
+function tzEpoch(dateStr,hh,mm,tz){
+  const[y,m,d]=dateStr.split('-').map(Number);
+  const guess=Date.UTC(y,m-1,d,hh,mm);
+  let off=tzOffsetMin(tz,new Date(guess));
+  let t=guess-off*60000;
+  const off2=tzOffsetMin(tz,new Date(t));
+  if(off2!==off)t=guess-off2*60000;
+  return t;
+}
+/* the three clocks that matter, and they are not the same clock:
+     trade  — Kalshi last trading time, 11:59 PM at the station
+     window — end of the NWS climate day (1am under DST, midnight otherwise)
+     settle — expiration, 10:00 AM ET the morning after
+   Under daylight saving the window outlives trading by 61 minutes, so the
+   final hour that can move the value is not tradeable. */
+function clocks(c,dx){
+  const D=dx.today, nx=nextDay(D);
+  const trade=tzEpoch(D,23,59,c.tz);
+  const window=tzEpoch(nx,dx.dst?1:0,0,c.tz);
+  const settle=tzEpoch(nx,10,0,'America/New_York');
+  return{D,nx,trade,window,settle,gap:Math.round((window-trade)/60000)};
+}
+function fmtLeft(ms){
+  if(ms<=0)return null;
+  const s=Math.floor(ms/1000),h=Math.floor(s/3600),m=Math.floor(s%3600/60);
+  if(h>=24)return`${Math.floor(h/24)}d ${h%24}h`;
+  if(h>0)return`${h}h ${String(m).padStart(2,'0')}m`;
+  return`${m}m ${String(s%60).padStart(2,'0')}s`;
 }
 /* the climate day that is currently open: under DST the 00:00 hour
    still belongs to yesterday's 1am–1am window */
@@ -820,6 +859,22 @@ function wetBlock(c,d){ /* d.cli = climate report */
   }
   return out+`</div>`;
 }
+function clockStrip(c,dx){
+  const K=clocks(c,dx),now=Date.now();
+  const label=new Date(K.D+'T12:00:00').toLocaleDateString([],{month:'short',day:'numeric'});
+  const chip=(txt,at,cls)=>{
+    const left=fmtLeft(at-now);
+    return`<span class="${cls||''}${left?'':' done'}">${txt} <b data-until="${at}">${left||'closed'}</b></span>`;
+  };
+  const wClosed=K.window<=now, sDone=K.settle<=now;
+  return`<div class="clocks">
+    <span class="day">trading day <b>${label}</b></span>
+    ${chip('trade closes',K.trade)}
+    ${chip('window closes',K.window,K.gap>1?'gap':'')}
+    ${sDone?'<span class="done">settled <b>&mdash;</b></span>':chip('settles',K.settle)}
+    ${wClosed&&!sDone?'<span class="fixed">value fixed &middot; awaiting report</span>':''}
+  </div>`;
+}
 function nowLine(c,dx){
   if(dx.nowTemp==null)
     return`<div class="nowline"><u>Now</u><b style="color:var(--dim)">—</b>
@@ -846,7 +901,7 @@ function card(c){
   const head=`<div class="name"><b>${esc(c.city)}</b><span class="site">${esc(c.site)}</span>
     ${dx&&dx.hi&&dx.hi.locked?'<span class="lockbadge">HIGH LOCKED</span>':''}
     ${dx&&dx.lo&&dx.lo.locked?'<span class="lockbadge">LOW LOCKED</span>':''}
-    ${dx&&dx.dst?`<span class="lockbadge" style="border-color:var(--rule);color:var(--dim)">CLIMATE DAY ${esc(dx.today.slice(5))} · 1–1</span>`:''}</div>`;
+</div>`;
   if(!dx||!dx.hi)return`<div class="city">${head}
     <p style="font-family:var(--mono);font-size:10px;color:var(--haze);margin:12px 0 4px">FORECAST UNAVAILABLE</p>${wetBlock(c,d)}</div>`;
   const agree=clamp(1-(dx.spread-0.6)/4.4,0,1);
@@ -869,6 +924,7 @@ function card(c){
   if(dx.drop)warn+=`<div class="warn"><b>Low not done.</b> Morning min was ${Math.round(dx.obsMin)}°, but ${Math.round(dx.drop.v)}° is forecast around ${dx.drop.hr}h — a later drop still counts for today.</div>`;
   if(dx.seam)warn+=`<div class="warn"><b>Climate-day seam.</b> Calendar midnight–midnight gives ${Math.round(dx.seam.cal)}°, the settling 1am–1am window gives ${Math.round(dx.seam.cli)}°. We use the settling window.</div>`;
   return`<div class="city">${head}
+    ${clockStrip(c,dx)}
     ${nowLine(c,dx)}
     <div class="pair">
       <div class="half hi"><u>High today</u><em>${Math.round(dx.hi.mu)}°</em>
@@ -927,9 +983,15 @@ function render(){
   const locks=CITIES.map(c=>{const dx=S.data[c.id]&&S.data[c.id].dx;
     if(!dx||!dx.hi)return null;return (dx.hi.locked?1:0)+(dx.lo&&dx.lo.locked?1:0)}).filter(x=>x!=null);
   const bothN=locks.filter(x=>x>=2).length, oneN=locks.filter(x=>x===1).length;
+  const cds=[...new Set(CITIES.map(c=>{const dx=S.data[c.id]&&S.data[c.id].dx;return dx?dx.today:null}).filter(Boolean))].sort();
+  const dayTxt=cds.length?(cds.length===1
+    ?`trading <b>${new Date(cds[0]+'T12:00:00').toLocaleDateString([],{month:'short',day:'numeric'})}</b>`
+    :`trading <b>${cds.map(d=>new Date(d+'T12:00:00').toLocaleDateString([],{month:'short',day:'numeric'})).join(' / ')}</b> — zones differ`)
+    :'';
   const rep=CITIES.map(c=>{const dx=S.data[c.id]&&S.data[c.id].dx;return dx?dx.nowSrc:null}).filter(Boolean);
   const live=rep.filter(x=>x==='obs').length;
-  document.getElementById('trust').innerHTML=(rep.length&&live<rep.length
+  document.getElementById('trust').innerHTML=(dayTxt?`<span class="tally">${dayTxt}</span> &nbsp;·&nbsp; `:'')
+    +(rep.length&&live<rep.length
     ?`<span class="tally"><s>${live}/${rep.length}</s> stations reporting &nbsp;·&nbsp; </span>`:'')
     +(locks.length
     ?`<span class="tally"><b>${bothN}</b> fully settled · <s>${oneN}</s> half settled · ${locks.length-bothN-oneN} in play</span>`:'')
@@ -937,6 +999,15 @@ function render(){
   document.getElementById('foot').textContent=S.ts
     ?'Highs and lows are computed over the NWS climate day — midnight to midnight local standard time, so 1am–1am under daylight saving, which means the midnight hour still belongs to the previous day. The observed max floors the high; the observed min caps the low. A low only locks when no remaining hour can undercut it. Yesterday is graded against the NWS Daily Climate Report.':'';
 }
+setInterval(()=>{
+  const now=Date.now();
+  document.querySelectorAll('#list b[data-until]').forEach(el=>{
+    const left=fmtLeft(+el.dataset.until-now);
+    const txt=left||'closed';
+    if(el.textContent!==txt)el.textContent=txt;
+    if(!left)el.parentElement.classList.add('done');
+  });
+},1000);
 document.getElementById('th').onclick=async()=>{
   const t=document.documentElement.dataset.theme==='light'?'dark':'light';
   applyTheme(t);await store.set('theme',t);render();
