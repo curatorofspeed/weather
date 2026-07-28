@@ -3,11 +3,12 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Daily Highs · Rain &amp; Snow</title>
+<title>Daily Highs &amp; Lows</title>
 <link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
 :root{--carbon:#0A0C0F;--slate:#12161B;--rule:#232B34;--vapor:#E6EBF1;--haze:#7C8895;--dim:#4C5764;
 --pulse:#38BDF8;--ember:#FF6B35;--obs:#C8B4FF;--gain:#3DD68C;--gold:#F5B32B;--rain:#5EC8F5;--loss:#F0616D;
+--cool:#7DA8FF;
 --mono:'JetBrains Mono',ui-monospace,Menlo,monospace;--disp:'Archivo',system-ui,sans-serif}
 *{box-sizing:border-box}
 body{margin:0;background:var(--carbon);color:var(--vapor);font-family:var(--disp);-webkit-font-smoothing:antialiased}
@@ -15,46 +16,54 @@ body{margin:0;background:var(--carbon);color:var(--vapor);font-family:var(--disp
 @media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
 header{position:sticky;top:0;z-index:5;background:linear-gradient(180deg,#0A0C0F 75%,rgba(10,12,15,.9));
   padding:14px 18px 10px;border-bottom:1px solid var(--rule)}
-.hrow{display:flex;align-items:baseline;gap:12px}
+.hrow{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap}
 h1{font-size:19px;font-weight:800;letter-spacing:-.02em;margin:0}
 h1 i{font-style:normal;color:var(--ember)}
 .when{font-family:var(--mono);font-size:11px;color:var(--haze);margin-left:auto;text-align:right;line-height:1.5}
-.refresh{background:none;border:1px solid var(--rule);border-radius:6px;color:var(--haze);
+.refresh{background:var(--slate);border:1px solid var(--rule);border-radius:6px;color:var(--haze);
   font-family:var(--mono);font-size:11px;padding:6px 11px;cursor:pointer}
 .refresh:hover{border-color:var(--ember);color:var(--ember)}
 .refresh:disabled{opacity:.45;cursor:default}
-select.refresh{appearance:auto;background:var(--slate)}
+select.refresh{appearance:auto}
 .htrust{font-family:var(--mono);font-size:10.5px;color:var(--haze);margin-top:7px}
 .htrust b{color:var(--gain);font-weight:500}
 main{padding:14px 12px 40px;max-width:640px;margin:0 auto}
 .city{background:var(--slate);border:1px solid var(--rule);border-radius:12px;padding:16px 16px 12px;margin-bottom:12px}
-.name{display:flex;align-items:baseline;gap:8px;margin-bottom:2px}
+.name{display:flex;align-items:baseline;gap:8px;margin-bottom:10px;flex-wrap:wrap}
 .name b{font-size:16px;font-weight:600;letter-spacing:-.01em}
-.name span{font-family:var(--mono);font-size:10.5px;color:var(--dim)}
-.name .locked{margin-left:auto;font-family:var(--mono);font-size:9.5px;letter-spacing:.09em;color:var(--obs)}
-.big{display:flex;align-items:flex-end;gap:14px;margin:10px 0 2px}
-.big em{font-style:normal;font-size:52px;font-weight:500;letter-spacing:-.04em;line-height:.92}
-.big .rng{font-family:var(--mono);font-size:12px;color:var(--haze);padding-bottom:7px;line-height:1.5}
-.big .rng u{display:block;text-decoration:none;font-size:9.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--dim)}
-.lbl{font-family:var(--mono);font-size:10px;letter-spacing:.11em;text-transform:uppercase;color:var(--haze)}
+.name span.site{font-family:var(--mono);font-size:10.5px;color:var(--dim)}
+.lockbadge{font-family:var(--mono);font-size:9px;letter-spacing:.08em;padding:2px 6px;border-radius:4px;
+  border:1px solid rgba(200,180,255,.3);color:var(--obs)}
+.pair{display:flex;gap:10px}
+.half{flex:1;min-width:0}
+.half u{display:block;text-decoration:none;font-family:var(--mono);font-size:10px;letter-spacing:.11em;
+  text-transform:uppercase;color:var(--haze);margin-bottom:2px}
+.half em{font-style:normal;font-size:44px;font-weight:500;letter-spacing:-.04em;line-height:1}
+.half.hi em{color:var(--vapor)}
+.half.lo em{color:var(--cool)}
+.half .rng{font-family:var(--mono);font-size:11.5px;color:var(--haze);margin-top:3px}
 .curve{margin:12px 0 8px}
-.curve svg{width:100%;height:74px;display:block;overflow:visible}
+.curve svg{width:100%;height:88px;display:block;overflow:visible}
 .now{display:flex;flex-wrap:wrap;border-top:1px solid var(--rule);padding-top:10px;margin-top:4px}
-.now div{flex:1;min-width:76px;font-family:var(--mono)}
+.now div{flex:1;min-width:72px;font-family:var(--mono)}
 .now u{display:block;text-decoration:none;font-size:9.5px;letter-spacing:.09em;text-transform:uppercase;color:var(--dim)}
 .now b{display:block;font-size:15px;font-weight:500;margin-top:1px}
 .now .o{color:var(--obs)}
+.now .c{color:var(--cool)}
 .days{display:flex;gap:6px;margin-top:12px;border-top:1px solid var(--rule);padding-top:11px}
 .day{flex:1;text-align:center;font-family:var(--mono);padding:5px 2px;border-radius:7px;background:rgba(255,255,255,.022)}
 .day u{display:block;text-decoration:none;font-size:9.5px;color:var(--dim);letter-spacing:.06em}
 .day b{display:block;font-size:15px;font-weight:500;margin-top:3px}
-.day i{display:block;font-style:normal;font-size:9.5px;color:var(--dim);margin-top:1px}
+.day i{display:block;font-style:normal;font-size:13px;color:var(--cool);margin-top:1px}
 .conf{display:flex;align-items:center;gap:8px;margin-top:10px;font-family:var(--mono);font-size:10.5px;color:var(--haze)}
 .meter{flex:1;height:3px;background:var(--rule);border-radius:2px;overflow:hidden}
 .meter i{display:block;height:100%;border-radius:2px}
 .chk{font-family:var(--mono);font-size:10.5px;color:var(--haze);margin-top:8px;line-height:1.7}
 .chk b{font-weight:500;color:var(--vapor)}
 .chk .good{color:var(--gain)}.chk .bad{color:var(--loss)}
+.warn{font-family:var(--mono);font-size:10.5px;line-height:1.6;margin-top:9px;padding:8px 10px;border-radius:8px;
+  background:rgba(245,179,43,.07);border:1px solid rgba(245,179,43,.28);color:var(--gold)}
+.warn b{color:var(--vapor);font-weight:500}
 .wet{margin-top:14px;border-top:1px solid var(--rule);padding-top:12px}
 .wetrow{display:flex;align-items:baseline;gap:10px;font-family:var(--mono);font-size:12.5px;margin-bottom:8px}
 .wetrow u{text-decoration:none;font-size:9.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--dim);min-width:74px}
@@ -78,13 +87,30 @@ main{padding:14px 12px 40px;max-width:640px;margin:0 auto}
   padding:12px 14px;font-family:var(--mono);font-size:11px;color:#FFC4C9;margin-bottom:12px;line-height:1.7}
 .foot{font-family:var(--mono);font-size:10px;color:var(--dim);line-height:1.8;padding:6px 4px 0}
 .skel{opacity:.4}
+.group{font-family:var(--mono);font-size:10px;letter-spacing:.14em;text-transform:uppercase;
+  color:var(--haze);margin:2px 2px 9px;display:flex;align-items:center;gap:10px}
+.group+.city{margin-top:0}
+.city+.group{margin-top:20px}
+.group i{flex:1;height:1px;background:var(--rule);font-style:normal}
+.group b{font-weight:500;letter-spacing:.14em}
+.group.both{color:var(--gain)}
+.group.one{color:var(--obs)}
+.tally{font-family:var(--mono);font-size:10.5px;color:var(--haze)}
+.tally b{color:var(--gain);font-weight:500}
+.tally s{color:var(--obs);text-decoration:none;font-weight:500}
 </style>
 </head>
 <body>
 <header>
   <div class="hrow">
-    <h1>Daily<i>·</i>Highs</h1>
+    <h1>Daily<i>·</i>Highs<span style="color:var(--cool)">&amp;Lows</span></h1>
     <select class="refresh" id="fCity" aria-label="Filter city"><option value="">All cities</option></select>
+    <select class="refresh" id="fState" aria-label="Filter by settled state">
+      <option value="">Settled first</option>
+      <option value="settled">Settled only</option>
+      <option value="play">Still in play</option>
+      <option value="az">A–Z</option>
+    </select>
     <button class="refresh" id="rf">Refresh</button>
     <div class="when" id="when">—</div>
   </div>
@@ -93,29 +119,34 @@ main{padding:14px 12px 40px;max-width:640px;margin:0 auto}
 <main><div id="errs"></div><div id="list"></div><p class="foot" id="foot"></p></main>
 
 <script>
-/* ════════════════════════════════════════════════════════════════════
-   Audited rebuild. Three rules the old version broke:
+/* ══════════════════════════════════════════════════════════════════════
+   HIGHS AND LOWS on the exact stations Kalshi settles.
 
-   1. CORRECT AGAINST THE THERMOMETER. Every load, each model's last
-      ~30 hours are scored against the station's own observations, and
-      its measured bias is subtracted before it votes.
-   2. START FROM NOW. The remainder of today is anchored to the current
-      observation and relaxes back to the corrected model over 6 hours.
-      Today's high = max(what's already recorded, corrected remaining
-      hours). Certainty tightens as the day runs out.
-   3. SCORE YOURSELF. The morning call is stored; the next day it is
-      graded against what actually happened. The track record is on
-      the card, wins and misses alike.
-   ════════════════════════════════════════════════════════════════════ */
+   The low is not the high upside down. Three things invert:
+
+   1. THE BOUND FLIPS. Today's observed max is a FLOOR on the high.
+      Today's observed min is a CEILING on the low — it can only go
+      lower from here, never higher.
+   2. THE CLIMATE DAY MATTERS. NWS climate days run midnight to
+      midnight LOCAL STANDARD time all year, so under daylight saving
+      the window is 1am–1am. The afternoon peak never notices. The
+      overnight minimum sits right on that seam, so we compute the low
+      over the true climate window and flag it when the calendar-day
+      answer would differ.
+   3. LOCKING IS HARDER. A high is done once the peak passes. A low is
+      NOT done after sunrise — an evening front can undercut the
+      morning minimum before the day closes. We only lock the low when
+      no remaining hour in the window is forecast to go below it.
+   ══════════════════════════════════════════════════════════════════════ */
 
 const CITIES=[
  {id:'KNYC',city:'New York',site:'Central Park',lat:40.7794,lon:-73.9692,tz:'America/New_York'},
- {id:'KMDW',city:'Chicago',site:'Midway — not O\'Hare',lat:41.7861,lon:-87.7524,tz:'America/Chicago'},
+ {id:'KMDW',city:'Chicago',site:"Midway — not O'Hare",lat:41.7861,lon:-87.7524,tz:'America/Chicago'},
  {id:'KMIA',city:'Miami',site:'Miami Intl',lat:25.7906,lon:-80.2871,tz:'America/New_York'},
  {id:'KAUS',city:'Austin',site:'Bergstrom',lat:30.1975,lon:-97.6664,tz:'America/Chicago'},
  {id:'KLAX',city:'Los Angeles',site:'LAX',lat:33.9425,lon:-118.4081,tz:'America/Los_Angeles'},
  {id:'KDEN',city:'Denver',site:'Denver Intl',lat:39.8617,lon:-104.6731,tz:'America/Denver'},
- {id:'KPHX',city:'Phoenix',site:'Sky Harbor',lat:33.4342,lon:-112.0116,tz:'America/Phoenix'},
+ {id:'KPHX',city:'Phoenix',site:'Sky Harbor · no DST',lat:33.4342,lon:-112.0116,tz:'America/Phoenix'},
  {id:'KPHL',city:'Philadelphia',site:'PHL',lat:39.8683,lon:-75.2311,tz:'America/New_York'},
  {id:'KHOU',city:'Houston',site:'Hobby — not Bush',lat:29.6459,lon:-95.2769,tz:'America/Chicago'},
  {id:'KMSP',city:'Minneapolis',site:'MSP',lat:44.8848,lon:-93.2223,tz:'America/Chicago'},
@@ -134,7 +165,6 @@ const MODELS=['gfs_hrrr','ncep_nbm_conus','ecmwf_ifs025','gfs_seamless'];
 const W_NEAR={gfs_hrrr:40,ncep_nbm_conus:30,ecmwf_ifs025:20,gfs_seamless:10};
 const W_FAR ={gfs_hrrr:0, ncep_nbm_conus:30,ecmwf_ifs025:42,gfs_seamless:28};
 const WET=0.01, LADDER=[0.25,0.5,1,1.5,2,3,4,5,6,7,8,9,10,12,15];
-const PEAK_END=19;            // local hour after which the high is treated as locked
 
 const S={data:{},climo:{},track:{},errs:[],busy:false,ts:null};
 const mean=a=>a.length?a.reduce((x,y)=>x+y,0)/a.length:null;
@@ -148,19 +178,44 @@ const hourKeyTz=(d,tz)=>{const f=new Intl.DateTimeFormat('en-CA',{timeZone:tz,ye
   return `${g('year')}-${g('month')}-${g('day')}T${h.padStart(2,'0')}`};
 const isoDay=d=>d.toISOString().slice(0,10);
 const daysAgo=n=>isoDay(new Date(Date.now()-n*864e5));
+const nextDay=d=>{const[y,m,x]=d.split('-').map(Number);return isoDay(new Date(Date.UTC(y,m-1,x+1)))};
 const q=(sorted,p)=>{if(!sorted.length)return null;const i=clamp(p,0,1)*(sorted.length-1),lo=Math.floor(i),hi=Math.ceil(i);
   return lo===hi?sorted[lo]:sorted[lo]+(sorted[hi]-sorted[lo])*(i-lo)};
 const store={async get(k){try{if(window.storage){const r=await window.storage.get(k,false);return r?JSON.parse(r.value):null}}catch(e){}return null},
   async set(k,v){try{if(window.storage)await window.storage.set(k,JSON.stringify(v),false)}catch(e){}}};
-
 async function jget(u){const r=await fetch(u,{headers:{Accept:'application/json'}});
   if(!r.ok)throw new Error(r.status+' '+r.statusText);return r.json()}
 
-/* ── fetch ─────────────────────────────────────────────────────── */
+/* ── the climate day: midnight–midnight LOCAL STANDARD time ──────── */
+function tzOffsetMin(tz,d){
+  const s=new Intl.DateTimeFormat('en-US',{timeZone:tz,timeZoneName:'shortOffset'}).format(d);
+  const m=/GMT([+-])(\d{1,2})(?::(\d{2}))?/.exec(s);
+  if(!m)return 0;
+  return (m[1]==='-'?-1:1)*(+m[2]*60+(+(m[3]||0)));
+}
+function isDST(tz,d){
+  const y=(d||new Date()).getUTCFullYear();
+  const jan=tzOffsetMin(tz,new Date(Date.UTC(y,0,15)));
+  const jul=tzOffsetMin(tz,new Date(Date.UTC(y,6,15)));
+  if(jan===jul)return false;                       // Phoenix and friends
+  return tzOffsetMin(tz,d||new Date())!==Math.min(jan,jul);
+}
+/* hour keys covering climate day `date`, in local clock terms */
+function climateKeys(date,dst){
+  const out=[],start=dst?1:0;
+  for(let h=start;h<24;h++)out.push(`${date}T${String(h).padStart(2,'0')}`);
+  if(dst)out.push(`${nextDay(date)}T00`);
+  return out;
+}
+function calendarKeys(date){
+  const out=[];for(let h=0;h<24;h++)out.push(`${date}T${String(h).padStart(2,'0')}`);return out;
+}
+
+/* ── fetch ───────────────────────────────────────────────────────── */
 async function models(c){
   const u=`https://api.open-meteo.com/v1/forecast?latitude=${c.lat}&longitude=${c.lon}`
    +`&hourly=temperature_2m&models=${MODELS.join(',')}&temperature_unit=fahrenheit`
-   +`&timezone=${encodeURIComponent(c.tz)}&forecast_days=5&past_days=2`;
+   +`&timezone=${encodeURIComponent(c.tz)}&forecast_days=6&past_days=2`;
   const raw=await jget(u),blocks=Array.isArray(raw)?raw:[raw],out={};
   for(const b of blocks){
     const h=b.hourly;if(!h||!h.time)continue;
@@ -172,8 +227,8 @@ async function models(c){
   return out;
 }
 async function obs(c){
-  const since=new Date(Date.now()-50*36e5).toISOString().replace(/\.\d+Z$/,'Z');
-  const d=await jget(`https://api.weather.gov/stations/${c.id}/observations?start=${since}&limit=240`);
+  const since=new Date(Date.now()-54*36e5).toISOString().replace(/\.\d+Z$/,'Z');
+  const d=await jget(`https://api.weather.gov/stations/${c.id}/observations?start=${since}&limit=260`);
   return (d.features||[]).map(f=>{const p=f.properties||{};
     return{t:p.timestamp,
       temp:p.temperature&&p.temperature.value!=null?p.temperature.value*9/5+32:null,
@@ -187,18 +242,17 @@ async function wet(c){
    +`&precipitation_unit=inch&timezone=${encodeURIComponent(c.tz)}&past_days=32&forecast_days=16`);
 }
 async function climo(c){
-  const k='climo_'+c.id, cached=await store.get(k);
+  const k='climo_'+c.id,cached=await store.get(k);
   if(cached&&Date.now()-cached.at<30*864e5)return cached.rows;
-  const u=`https://archive-api.open-meteo.com/v1/archive?latitude=${c.lat}&longitude=${c.lon}`
+  const d=await jget(`https://archive-api.open-meteo.com/v1/archive?latitude=${c.lat}&longitude=${c.lon}`
    +`&start_date=${daysAgo(365*7)}&end_date=${daysAgo(7)}&daily=precipitation_sum`
-   +`&precipitation_unit=inch&timezone=${encodeURIComponent(c.tz)}`;
-  const d=await jget(u);
+   +`&precipitation_unit=inch&timezone=${encodeURIComponent(c.tz)}`);
   const rows=(d.daily&&d.daily.time||[]).map((t,i)=>({d:t,v:d.daily.precipitation_sum[i]})).filter(r=>r.v!=null);
   await store.set(k,{at:Date.now(),rows});
   return rows;
 }
 
-/* ── 1. score each model against the thermometer (last ~30h) ───── */
+/* ── grade each model against the thermometer, remove its bias ───── */
 function fitBias(mod,obsArr,tz,nowKey){
   const om={};
   obsArr.forEach(o=>{const k=hourKeyTz(new Date(o.t),tz);(om[k]=om[k]||[]).push(o.temp)});
@@ -211,98 +265,218 @@ function fitBias(mod,obsArr,tz,nowKey){
       const o=om[k];
       if(o&&v[i]!=null)errs.push(v[i]-mean(o));
     }
-    if(errs.length>=6){
-      const recent=errs.slice(-30);
-      per[m]=mean(recent);
-      all.push(...recent);
-      n=Math.max(n,recent.length);
-    }
+    if(errs.length>=6){const r=errs.slice(-30);per[m]=mean(r);all.push(...r);n=Math.max(n,r.length)}
   }
-  return{per,n,bias:all.length?mean(all):null,
-    rmse:all.length?Math.sqrt(mean(all.map(e=>e*e))):null};
+  return{per,n,bias:all.length?mean(all):null,rmse:all.length?Math.sqrt(mean(all.map(e=>e*e))):null};
 }
-
-/* ── weighted, bias-corrected hourly blend for one date ────────── */
-function blendHours(mod,date,wset,per){
-  const acc={};
-  for(let pass=0;pass<2;pass++){
-    for(const m in mod){
-      const w=pass===0?(wset[m]||0):1;
-      if(!w)continue;
-      const b=clamp((per&&per[m])||0,-6,6);
-      const{t,v}=mod[m];
-      for(let i=0;i<t.length;i++){
-        if(t[i].slice(0,10)!==date||v[i]==null)continue;
-        const hr=+t[i].slice(11,13);
-        (acc[hr]=acc[hr]||{n:0,d:0});acc[hr].n+=(v[i]-b)*w;acc[hr].d+=w;
-      }
-    }
-    if(Object.keys(acc).length)break;   // second pass only if weights excluded everything
-  }
+/* bias-corrected hourly series per model, keyed YYYY-MM-DDTHH */
+function correctedSeries(mod,per){
   const out={};
-  for(const h in acc)out[+h]=acc[h].d?acc[h].n/acc[h].d:null;
+  for(const m in mod){
+    const b=clamp((per&&per[m])||0,-6,6),{t,v}=mod[m],bag={};
+    for(let i=0;i<t.length;i++)if(v[i]!=null)bag[t[i].slice(0,13)]=v[i]-b;
+    out[m]=bag;
+  }
+  return out;
+}
+function blendAt(cs,key,wset){
+  const vals=[];let n=0,d=0;
+  for(const m in cs){const v=cs[m][key];if(v==null)continue;vals.push(v);const w=wset[m]||0;n+=v*w;d+=w}
+  if(!vals.length)return null;
+  return{v:d?n/d:mean(vals),spread:vals.length>1?(sd(vals)||0.9):1.2,n:vals.length};
+}
+function blendWindow(cs,keys,wset){
+  const out={};
+  for(const k of keys){const b=blendAt(cs,k,wset);if(b)out[k]=b}
   return out;
 }
 
-/* ── 2. today's high: obs floor + anchored remaining hours ─────── */
-function todayHigh(hours,nowHr,obsNow,obsMax,spread){
-  const hs=Object.keys(hours).map(Number);
-  if(!hs.length)return null;
+/* ── today's extreme, anchored to the current observation ────────── */
+/*  dir = +1 for the high (obs bound is a FLOOR), -1 for the low
+    (obs bound is a CEILING).                                        */
+function todayExtreme(win,keys,nowKey,obsNow,obsBound,spread,dir){
+  const present=keys.filter(k=>win[k]!=null);
+  if(!present.length)return null;
   let off=0;
-  if(obsNow!=null&&hours[nowHr]!=null)off=obsNow-hours[nowHr];
-  let maxRem=null,remHr=null;
-  for(const h of hs){
-    if(h<nowHr)continue;
-    const v=hours[h]+off*Math.max(0,1-(h-nowHr)/6);
-    if(maxRem==null||v>maxRem){maxRem=v;remHr=h}
+  if(obsNow!=null&&win[nowKey]!=null)off=obsNow-win[nowKey].v;
+  const rem=present.filter(k=>k>=nowKey);
+  const hrsFrom=k=>{const i=present.indexOf(k),j=present.indexOf(nowKey);return j<0?0:Math.max(0,i-j)};
+  let best=null,bestKey=null;
+  for(const k of rem){
+    const v=win[k].v+off*Math.max(0,1-hrsFrom(k)/6);
+    if(best==null||(dir>0?v>best:v<best)){best=v;bestKey=k}
   }
-  let mu=maxRem, peakHr=remHr, locked=false;
-  if(obsMax!=null&&(mu==null||obsMax>=mu)){mu=obsMax;locked=nowHr>=PEAK_END||maxRem==null||obsMax>maxRem+0.5}
+  let mu=best,peakKey=bestKey,locked=false;
+  if(obsBound!=null){
+    const boundWins=(best==null)||(dir>0?obsBound>=best:obsBound<=best);
+    if(boundWins){mu=obsBound;peakKey=null}
+    /* locked only when nothing left in the window can beat the bound */
+    locked = best==null || (dir>0 ? best<=obsBound+0.5 : best>=obsBound-0.5);
+  }
   if(mu==null)return null;
-  const remainFrac=clamp((PEAK_END-nowHr)/12,0,1);
+  const remFrac=clamp(rem.length/Math.max(present.length,1),0,1);
   const base=Math.max(1.1,(spread||1)*1.25+0.5);
-  let sigma=Math.max(0.5,base*Math.max(remainFrac,0.12));
+  let sigma=Math.max(0.5,base*Math.max(remFrac,0.12));
   if(locked)sigma=Math.min(sigma,0.6);
   let lo=mu-sigma,hi=mu+sigma;
-  if(obsMax!=null&&lo<obsMax)lo=obsMax;
-  return{mu,sigma,lo,hi,off,peakHr,locked};
+  if(obsBound!=null){ if(dir>0&&lo<obsBound)lo=obsBound; if(dir<0&&hi>obsBound)hi=obsBound; }
+  return{mu,sigma,lo,hi,off,peakKey,locked,remaining:rem.length};
 }
-
-/* future days: bias-corrected per-model daily max, weighted ─────── */
-function futureDay(mod,date,lead,per){
-  const w=lead<=1?W_NEAR:W_FAR;
-  const vals=[];let num=0,den=0;
-  for(const m in mod){
-    const{t,v}=mod[m];let mx=null;
-    for(let i=0;i<t.length;i++){
-      if(t[i].slice(0,10)!==date||v[i]==null)continue;
-      if(mx==null||v[i]>mx)mx=v[i];
-    }
-    if(mx==null)continue;
-    mx-=clamp(((per&&per[m])||0)*0.7,-3,3);   // shrunk station correction
-    vals.push(mx);const k=w[m]||0;num+=mx*k;den+=k;
+/* a later drop below the morning minimum — the classic low-temp trap */
+function frontalDrop(win,keys,nowKey,obsBound){
+  if(obsBound==null)return null;
+  let worst=null,wk=null;
+  for(const k of keys){
+    if(k<=nowKey||win[k]==null)continue;
+    if(win[k].v<obsBound-1&&(worst==null||win[k].v<worst)){worst=win[k].v;wk=k}
+  }
+  return worst!=null?{v:worst,hr:+wk.slice(11,13)}:null;
+}
+function futureExtreme(cs,keys,wset,dir){
+  const vals=[];
+  for(const m in cs){
+    let best=null;
+    for(const k of keys){const v=cs[m][k];if(v==null)continue;
+      if(best==null||(dir>0?v>best:v<best))best=v}
+    if(best!=null)vals.push({m,v:best});
   }
   if(!vals.length)return null;
-  const mu=den?num/den:mean(vals);
-  const spread=vals.length>1?(sd(vals)||0.9):1.4;
-  const sigma=Math.max(1.1,spread*1.25+0.5+lead*0.45);
-  return{mu,sigma,spread,n:vals.length};
+  let n=0,d=0;
+  vals.forEach(x=>{const w=wset[x.m]||0;n+=x.v*w;d+=w});
+  const mu=d?n/d:mean(vals.map(x=>x.v));
+  const spread=vals.length>1?(sd(vals.map(x=>x.v))||0.9):1.4;
+  return{mu,spread,sigma:Math.max(1.1,spread*1.25+0.5)};
 }
 
-/* ── rain ──────────────────────────────────────────────────────── */
+/* ── settlement source: NWS Daily Climate Report ─────────────────── */
+function parseCli(v,which){
+  if(!v)return null;
+  const rows=v.results||v.data||(Array.isArray(v)?v:[v]);
+  for(const x of rows||[]){
+    const raw = which==='low'
+      ? (x.low??x.low_temperature??(x.temperature&&x.temperature.low))
+      : (x.high??x.high_temperature??(x.temperature&&x.temperature.high));
+    const n=parseFloat(raw);
+    if(isFinite(n)&&n>=-60&&n<=140)return Math.round(n);
+  }
+  return null;
+}
+async function fetchCli(stationId,date){
+  try{
+    const v=await jget(`https://mesonet.agron.iastate.edu/json/cli.py?station=${stationId}&date=${date}`);
+    return{hi:parseCli(v,'high'),lo:parseCli(v,'low')};
+  }catch(e){return null}
+}
+
+/* ── self-scoring track record ───────────────────────────────────── */
+function resolveTrack(arr,obsArr,tz,yday,dst){
+  const e=arr.find(x=>x.d===yday&&(x.a==null||x.al==null));
+  if(e){
+    const keys=new Set(climateKeys(yday,dst));
+    const yo=obsArr.filter(o=>keys.has(hourKeyTz(new Date(o.t),tz)));
+    if(yo.length>=16){
+      const temps=yo.map(o=>o.temp);
+      if(e.a==null){e.a=Math.round(Math.max(...temps));e.src='obs'}
+      if(e.al==null){e.al=Math.round(Math.min(...temps));e.src=e.src||'obs'}
+    }
+  }
+  return arr.filter(x=>x.d>=daysAgo(21));
+}
+function trackStats(arr){
+  const done=arr.filter(x=>x.a!=null).sort((a,b)=>a.d<b.d?-1:1);
+  if(!done.length)return null;
+  const eh=done.map(x=>x.p-x.a);
+  const lows=done.filter(x=>x.pl!=null&&x.al!=null);
+  const el=lows.map(x=>x.pl-x.al);
+  return{n:done.length,maeHi:mean(eh.map(Math.abs)),
+    maeLo:el.length?mean(el.map(Math.abs)):null,nLo:el.length,
+    within2:eh.filter(e=>Math.abs(e)<=2).length,last:done[done.length-1]};
+}
+async function updateTrack(c,tz,today,predHi,predLo,obsArr,dst){
+  const k='trk_'+c.id;
+  let arr=(await store.get(k))||[];
+  const yday=dayKey(new Date(Date.now()-864e5).toISOString(),tz);
+  const open=arr.find(x=>x.d===yday&&(x.a==null||x.al==null));
+  if(open){
+    const cli=await fetchCli(c.id,yday);
+    if(cli){
+      if(cli.hi!=null){open.a=cli.hi;open.src='CLI'}
+      if(cli.lo!=null){open.al=cli.lo;open.src='CLI'}
+    }
+  }
+  arr=resolveTrack(arr,obsArr,tz,yday,dst);
+  if(predHi!=null&&hourIn(tz)<=12&&!arr.find(x=>x.d===today))
+    arr.push({d:today,p:Math.round(predHi),pl:predLo!=null?Math.round(predLo):null});
+  await store.set(k,arr);
+  S.track[c.id]=arr;
+}
+
+/* ── derive ──────────────────────────────────────────────────────── */
+function derive(c,d){
+  if(!d||!d.mod)return null;
+  const tz=c.tz,now=new Date();
+  const today=dayKey(now.toISOString(),tz);
+  const nowHr=hourIn(tz),nowKey=hourKeyTz(now,tz);
+  const dst=isDST(tz,now);
+  const O=d.obs||[],last=O[O.length-1];
+
+  const bias=fitBias(d.mod,O,tz,nowKey);
+  const cs=correctedSeries(d.mod,bias.per);
+
+  const cKeys=climateKeys(today,dst);
+  const kSet=new Set(cKeys);
+  const win=blendWindow(cs,cKeys,W_NEAR);
+
+  /* observations inside the true climate window */
+  const inWin=O.filter(o=>kSet.has(hourKeyTz(new Date(o.t),tz)));
+  const obsMax=inWin.length?Math.max(...inWin.map(o=>o.temp)):null;
+  const obsMin=inWin.length?Math.min(...inWin.map(o=>o.temp)):null;
+  const obsNow=last?last.temp:null;
+
+  const spread=(()=>{const v=[];
+    for(const m in cs){let mx=null;for(const k of cKeys){const x=cs[m][k];if(x!=null&&(mx==null||x>mx))mx=x}
+      if(mx!=null)v.push(mx)}
+    return v.length>1?(sd(v)||0.9):1.4})();
+
+  const hi=todayExtreme(win,cKeys,nowKey,obsNow,obsMax,spread,+1);
+  const lo=todayExtreme(win,cKeys,nowKey,obsNow,obsMin,spread,-1);
+  const drop=frontalDrop(win,cKeys,nowKey,obsMin);
+
+  /* does the calendar-day answer differ from the climate-day answer? */
+  let seam=null;
+  if(dst){
+    const calWin=blendWindow(cs,calendarKeys(today),W_NEAR);
+    const calObs=O.filter(o=>hourKeyTz(new Date(o.t),tz).slice(0,10)===today);
+    const pool=k=>Object.values(k).map(x=>x.v);
+    const calLo=Math.min(...pool(calWin).concat(calObs.map(o=>o.temp)));
+    const cliLo=Math.min(...pool(win).concat(inWin.map(o=>o.temp)));
+    if(isFinite(calLo)&&isFinite(cliLo)&&Math.abs(calLo-cliLo)>=1)
+      seam={cal:calLo,cli:cliLo};
+  }
+
+  const dates=[...new Set(Object.values(d.mod).flatMap(m=>m.t.map(x=>x.slice(0,10))))]
+    .sort().filter(x=>x>today).slice(0,4);
+  const future=dates.map((dt,i)=>{
+    const ks=climateKeys(dt,isDST(tz,new Date(dt+'T12:00:00')));
+    const w=i===0?W_NEAR:W_FAR;
+    return{dt,hi:futureExtreme(cs,ks,w,+1),lo:futureExtreme(cs,ks,w,-1)};
+  }).filter(x=>x.hi&&x.lo);
+
+  return{today,nowHr,nowKey,dst,win,cKeys,hi,lo,drop,seam,future,bias,
+    obsMax,obsMin,obsNow,last,inWin,spread};
+}
+
+/* ── rain (unchanged) ────────────────────────────────────────────── */
 function rainToday(W,tz,today){
   if(!W||!W.daily)return null;
   const di=W.daily.time.indexOf(today);
   const fcast=di>=0?W.daily.precipitation_sum[di]:null;
   const pop=di>=0&&W.daily.precipitation_probability_max?W.daily.precipitation_probability_max[di]:null;
-  let fell=0,have=false;
-  const hr=hourIn(tz);
-  if(W.hourly&&W.hourly.time){
-    for(let i=0;i<W.hourly.time.length;i++){
-      const t=W.hourly.time[i];if(t.slice(0,10)!==today)continue;
-      if(+t.slice(11,13)>hr)continue;
-      const v=W.hourly.precipitation[i];if(v!=null){fell+=v;have=true}
-    }
+  let fell=0,have=false;const hr=hourIn(tz);
+  if(W.hourly&&W.hourly.time)for(let i=0;i<W.hourly.time.length;i++){
+    const t=W.hourly.time[i];if(t.slice(0,10)!==today)continue;
+    if(+t.slice(11,13)>hr)continue;
+    const v=W.hourly.precipitation[i];if(v!=null){fell+=v;have=true}
   }
   const settled=have&&fell>=WET;
   let p=settled?1:(pop!=null?pop/100:(fcast>=WET?0.6:0.1));
@@ -355,97 +529,12 @@ function monthOutlook(c,W,CL,today){
   const P=T0=>tot.filter(x=>x>T0).length/N;
   const above=LADDER.filter(x=>x>med),below=LADDER.filter(x=>x<=med);
   const picks=[below.length?below[below.length-1]:LADDER[0],above.length?above[0]:LADDER[LADDER.length-1]];
-  const thresholds=[...new Set(picks)].map(t=>({t,p:banked>t?1:P(t)}));
-  return{banked,bDays,fc,fcDays,gapDays,med,lo,hi,thresholds,lastDay,snow,
-    snowUnit:(W.daily_units&&W.daily_units.snowfall_sum)||'cm',climYears:samples.length};
+  return{banked,bDays,fc,fcDays,gapDays,med,lo,hi,lastDay,snow,
+    snowUnit:(W.daily_units&&W.daily_units.snowfall_sum)||'cm',climYears:samples.length,
+    thresholds:[...new Set(picks)].map(t=>({t,p:banked>t?1:P(t)}))};
 }
 
-/* ── settlement source: the NWS Daily Climate Report (CLI) ─────────
-   The contract settles on the CLI high, not the METAR max. CLI can
-   print 1° above the hourly obs (spikes between obs are captured by
-   the 6-hourly max groups), so we grade against CLI when we can get
-   it and fall back to the obs max when we can't. */
-function parseCliHigh(v){
-  if(!v)return null;
-  const rows=v.results||v.data||(Array.isArray(v)?v:[v]);
-  for(const x of rows||[]){
-    const h=x.high??x.high_temperature??(x.temperature&&x.temperature.high);
-    const n=parseFloat(h);
-    if(isFinite(n)&&n>=-30&&n<=130)return Math.round(n);
-  }
-  return null;
-}
-async function fetchCliHigh(stationId,date){
-  try{
-    return parseCliHigh(await jget(
-      `https://mesonet.agron.iastate.edu/json/cli.py?station=${stationId}&date=${date}`));
-  }catch(e){return null}
-}
-
-/* ── 3. self-scoring track record ──────────────────────────────── */
-function resolveTrack(arr,obsArr,tz,today,yday){
-  const e=arr.find(x=>x.d===yday&&x.a==null);
-  if(e){
-    const yo=obsArr.filter(o=>dayKey(o.t,tz)===yday);
-    if(yo.length>=16){e.a=Math.round(Math.max(...yo.map(o=>o.temp)));e.src='obs'}
-  }
-  return arr.filter(x=>x.d>=daysAgo(21));
-}
-function trackStats(arr){
-  const done=arr.filter(x=>x.a!=null).sort((a,b)=>a.d<b.d?-1:1);
-  if(!done.length)return null;
-  const errs=done.map(x=>x.p-x.a);
-  return{n:done.length,mae:mean(errs.map(Math.abs)),
-    within2:errs.filter(e=>Math.abs(e)<=2).length,
-    last:done[done.length-1]};
-}
-async function updateTrack(c,tz,today,todayPred,obsArr){
-  const k='trk_'+c.id;
-  let arr=(await store.get(k))||[];
-  const yday=dayKey(new Date(Date.now()-864e5).toISOString(),tz);
-  const open=arr.find(x=>x.d===yday&&x.a==null);
-  if(open){
-    const h=await fetchCliHigh(c.id,yday);
-    if(h!=null){open.a=h;open.src='CLI'}
-  }
-  arr=resolveTrack(arr,obsArr,tz,today,yday);
-  if(todayPred!=null&&hourIn(tz)<=12&&!arr.find(x=>x.d===today))
-    arr.push({d:today,p:Math.round(todayPred)});
-  await store.set(k,arr);
-  S.track[c.id]=arr;
-}
-
-/* ── derive everything for one city ────────────────────────────── */
-function derive(c,d){
-  if(!d||!d.mod)return null;
-  const tz=c.tz;
-  const today=dayKey(new Date().toISOString(),tz);
-  const nowHr=hourIn(tz);
-  const nowKey=hourKeyTz(new Date(),tz);
-  const O=d.obs||[],last=O[O.length-1];
-  const tObs=O.filter(o=>dayKey(o.t,tz)===today);
-  const obsMax=tObs.length?Math.max(...tObs.map(o=>o.temp)):null;
-  const obsNow=last?last.temp:null;
-
-  const bias=fitBias(d.mod,O,tz,nowKey);
-  const hours=blendHours(d.mod,today,W_NEAR,bias.per);
-  const spreadToday=(()=>{const v=[];
-    for(const m in d.mod){const{t,v:vv}=d.mod[m];let mx=null;
-      for(let i=0;i<t.length;i++){if(t[i].slice(0,10)!==today||vv[i]==null)continue;
-        if(mx==null||vv[i]>mx)mx=vv[i]}
-      if(mx!=null)v.push(mx)}
-    return v.length>1?(sd(v)||0.9):1.4})();
-  const t0=todayHigh(hours,nowHr,obsNow,obsMax,spreadToday);
-
-  const allDates=[...new Set(Object.values(d.mod).flatMap(m=>m.t.map(x=>x.slice(0,10))))]
-    .sort().filter(x=>x>today).slice(0,4);
-  const future=allDates.map((dt,i)=>({dt,p:futureDay(d.mod,dt,i+1,bias.per)})).filter(x=>x.p);
-
-  return{today,nowHr,hours,t0,future,bias,obsMax,obsNow,last,tObs,
-    spread:spreadToday};
-}
-
-/* ── load ──────────────────────────────────────────────────────── */
+/* ── load ────────────────────────────────────────────────────────── */
 async function load(){
   if(S.busy)return;S.busy=true;S.errs=[];render();
   for(let i=0;i<CITIES.length;i+=5){
@@ -454,63 +543,70 @@ async function load(){
       if(m.status==='rejected')S.errs.push(`${c.city} forecast: ${m.reason.message}`);
       if(w.status==='rejected')S.errs.push(`${c.city} rain: ${w.reason.message}`);
       const data={mod:m.status==='fulfilled'?m.value:null,
-        obs:o.status==='fulfilled'?o.value:[],
-        wet:w.status==='fulfilled'?w.value:null};
+        obs:o.status==='fulfilled'?o.value:[],wet:w.status==='fulfilled'?w.value:null};
       if(cl.status==='fulfilled')S.climo[c.id]=cl.value;
       data.dx=derive(c,data);
       S.data[c.id]=data;
-      if(data.dx&&data.dx.t0)await updateTrack(c,c.tz,data.dx.today,data.dx.t0.mu,data.obs);
+      if(data.dx&&data.dx.hi)await updateTrack(c,c.tz,data.dx.today,data.dx.hi.mu,
+        data.dx.lo?data.dx.lo.mu:null,data.obs,data.dx.dst);
     }));
     render();
   }
   S.ts=new Date();S.busy=false;render();
 }
 
-/* ── views ─────────────────────────────────────────────────────── */
+/* ── curve: whole climate day, both extremes marked ──────────────── */
 function curve(c,d){
-  const dx=d.dx;if(!dx||!dx.hours)return'';
-  const tz=c.tz,W=560,H=74;
-  const hs=Object.keys(dx.hours).map(Number).sort((a,b)=>a-b);
-  if(hs.length<4)return'';
-  const off=dx.t0?dx.t0.off:0;
-  const pts=hs.map(h=>({h,v:dx.hours[h]+(h>=dx.nowHr?off*Math.max(0,1-(h-dx.nowHr)/6):0)}));
-  const op=dx.tObs.map(o=>({h:hourIn(tz,new Date(o.t)),v:o.temp}));
+  const dx=d.dx;if(!dx||!dx.win)return'';
+  const tz=c.tz,W=560,H=88;
+  const keys=dx.cKeys.filter(k=>dx.win[k]!=null);
+  if(keys.length<5)return'';
+  const idx=k=>dx.cKeys.indexOf(k);
+  const nowI=idx(dx.nowKey);
+  const off=dx.hi?dx.hi.off:0;
+  const pts=keys.map(k=>{const i=idx(k);
+    return{i,h:+k.slice(11,13),v:dx.win[k].v+(nowI>=0&&i>=nowI?off*Math.max(0,1-(i-nowI)/6):0)}});
+  const op=dx.inWin.map(o=>{const k=hourKeyTz(new Date(o.t),tz);return{i:idx(k),v:o.temp}}).filter(p=>p.i>=0);
   const all=pts.map(p=>p.v).concat(op.map(p=>p.v));
   const y0=Math.min(...all)-2,y1=Math.max(...all)+2;
-  const X=h=>(h/23)*W,Y=v=>H-12-((v-y0)/((y1-y0)||1))*(H-24);
-  const line=a=>a.map(p=>`${X(p.h).toFixed(1)},${Y(p.v).toFixed(1)}`).join(' ');
-  const fut=pts.filter(p=>p.h>=dx.nowHr),past=pts.filter(p=>p.h<=dx.nowHr);
-  const labelHrs=fut.filter((p,i)=>p.h>dx.nowHr&&(p.h-dx.nowHr)%3===0&&p.h<=PEAK_END+2).slice(0,4);
-  const peakH=dx.t0&&dx.t0.peakHr!=null?dx.t0.peakHr:null;
-  const peakV=dx.t0?dx.t0.mu:null;
+  const N=dx.cKeys.length-1;
+  const X=i=>(i/N)*W,Y=v=>H-14-((v-y0)/((y1-y0)||1))*(H-30);
+  const line=a=>a.map(p=>`${X(p.i).toFixed(1)},${Y(p.v).toFixed(1)}`).join(' ');
+  const fut=pts.filter(p=>p.i>=nowI),past=pts.filter(p=>p.i<=nowI);
+  const lab=fut.filter(p=>p.i>nowI&&(p.i-nowI)%4===0).slice(0,4);
+  const mark=(ext,color,tag)=>{
+    if(!ext)return'';
+    const i=ext.peakKey!=null?idx(ext.peakKey):(()=>{const t=op.concat(pts);
+      let b=null;for(const p of t){if(Math.abs(p.v-ext.mu)<0.35&&(b==null||p.i<b))b=p.i}return b??nowI})();
+    if(i<0)return'';
+    return`<circle cx="${X(i).toFixed(1)}" cy="${Y(ext.mu).toFixed(1)}" r="3" fill="${color}"/>
+    <text x="${clamp(X(i),22,W-38).toFixed(1)}" y="${(tag==='hi'?Math.max(9,Y(ext.mu)-7):Math.min(H-16,Y(ext.mu)+13)).toFixed(1)}"
+      fill="${color}" font-size="10" font-family="monospace" text-anchor="middle">${Math.round(ext.mu)}°</text>`;
+  };
   return`<div class="curve"><svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" role="img"
-    aria-label="Temperature through today in ${esc(c.city)}">
-   ${past.length>1?`<polyline fill="none" stroke="#38BDF8" stroke-width="1.3" stroke-dasharray="2 4" opacity=".45" points="${line(past)}"/>`:''}
+    aria-label="Temperature across the climate day in ${esc(c.city)}">
+   ${past.length>1?`<polyline fill="none" stroke="#38BDF8" stroke-width="1.3" stroke-dasharray="2 4" opacity=".4" points="${line(past)}"/>`:''}
    ${fut.length>1?`<polyline fill="none" stroke="#38BDF8" stroke-width="1.8" stroke-dasharray="4 3" points="${line(fut)}"/>`:''}
    ${op.length>1?`<polyline fill="none" stroke="#C8B4FF" stroke-width="2" points="${line(op)}"/>`:''}
-   ${labelHrs.map(p=>`<text x="${X(p.h).toFixed(1)}" y="${(Y(p.v)-6).toFixed(1)}" fill="#7C8895" font-size="9.5"
+   ${lab.map(p=>`<text x="${X(p.i).toFixed(1)}" y="${(Y(p.v)-6).toFixed(1)}" fill="#7C8895" font-size="9"
      font-family="monospace" text-anchor="middle">${Math.round(p.v)}°</text>
-     <text x="${X(p.h).toFixed(1)}" y="${H-1}" fill="#4C5764" font-size="8.5" font-family="monospace" text-anchor="middle">${p.h}h</text>`).join('')}
-   ${peakH!=null&&peakV!=null?`<circle cx="${X(peakH).toFixed(1)}" cy="${Y(peakV).toFixed(1)}" r="3" fill="#FF6B35"/>
-   <text x="${clamp(X(peakH),18,W-44).toFixed(1)}" y="${Math.max(9,Y(peakV)-7).toFixed(1)}" fill="#FF6B35"
-     font-size="10" font-family="monospace" text-anchor="middle">${Math.round(peakV)}° @ ${peakH}h</text>`:''}
-   <line x1="${X(dx.nowHr).toFixed(1)}" y1="0" x2="${X(dx.nowHr).toFixed(1)}" y2="${H-10}" stroke="#4C5764" stroke-dasharray="2 4"/>
+     <text x="${X(p.i).toFixed(1)}" y="${H-1}" fill="#4C5764" font-size="8.5" font-family="monospace" text-anchor="middle">${p.h}h</text>`).join('')}
+   ${mark(dx.hi,'#FF6B35','hi')}${mark(dx.lo,'#7DA8FF','lo')}
+   ${nowI>=0?`<line x1="${X(nowI).toFixed(1)}" y1="0" x2="${X(nowI).toFixed(1)}" y2="${H-12}" stroke="#4C5764" stroke-dasharray="2 4"/>`:''}
   </svg></div>`;
 }
 function wetBlock(c,d){
   const W=d.wet;if(!W)return'';
   const today=dayKey(new Date().toISOString(),c.tz);
-  const R=rainToday(W,c.tz,today);
-  const M=monthOutlook(c,W,S.climo[c.id],today);
+  const R=rainToday(W,c.tz,today),M=monthOutlook(c,W,S.climo[c.id],today);
   if(!R&&!M)return'';
   const mn=new Date(today+'T12:00:00').toLocaleDateString([],{month:'long'});
-  let out=`<div class="wet"><div class="lbl" style="margin-bottom:9px">Rain &amp; snow</div>`;
+  let out=`<div class="wet"><div style="font-family:var(--mono);font-size:10px;letter-spacing:.11em;text-transform:uppercase;color:var(--haze);margin-bottom:9px">Rain &amp; snow</div>`;
   if(R){
     out+=`<div class="wetrow"><u>Today</u>`;
     if(R.settled)out+=`<b class="fell">Already rained</b><span>≈${R.fell.toFixed(2)}" so far</span>`;
     else{out+=`<b>${Math.round(R.p*100)}%</b><span>chance${R.fcast!=null&&R.fcast>=WET?` · ${R.fcast.toFixed(2)}" expected`:''}`;
-      if(R.win)out+=` · likely ${R.win.a===R.win.b?R.win.a+'h':R.win.a+'–'+R.win.b+'h'}`;
-      out+=`</span>`}
+      if(R.win)out+=` · likely ${R.win.a===R.win.b?R.win.a+'h':R.win.a+'–'+R.win.b+'h'}`;out+=`</span>`}
     out+=`</div>`;
   }
   if(M){
@@ -522,8 +618,7 @@ function wetBlock(c,d){
      <div class="wetrow"><u>Month end</u><b>${M.med.toFixed(2)}"</b>
        <span>${M.lo.toFixed(2)}–${M.hi.toFixed(2)}" · ${M.fcDays}d forecast${M.gapDays?` + ${M.gapDays}d from ${M.climYears} yrs`:''}</span></div>`;
     if(M.snow>0.05)out+=`<div class="wetrow"><u>Snow</u><b>${M.snow.toFixed(1)}</b><span>${esc(M.snowUnit)} this month</span></div>`;
-    out+=`<div class="thr">${M.thresholds.map(x=>{
-      const set=x.p>=0.999,dead=x.p<=0.02;
+    out+=`<div class="thr">${M.thresholds.map(x=>{const set=x.p>=0.999,dead=x.p<=0.02;
       return`<div class="tchip ${set?'set':dead?'dead':''}"><u>above ${x.t}"</u>
         <b>${set?'✓ settled':dead?'—':Math.round(x.p*100)+'%'}</b></div>`}).join('')}</div>`;
   }
@@ -531,13 +626,15 @@ function wetBlock(c,d){
 }
 function card(c){
   const d=S.data[c.id];
-  if(!d)return`<div class="city skel"><div class="name"><b>${esc(c.city)}</b><span>${esc(c.site)}</span></div>
-    <div class="big"><em>—</em></div></div>`;
-  const head=`<div class="name"><b>${esc(c.city)}</b><span>${esc(c.site)}</span>${
-    d.dx&&d.dx.t0&&d.dx.t0.locked?'<span class="locked">HIGH LOCKED</span>':''}</div>`;
-  if(!d.dx||!d.dx.t0)return`<div class="city">${head}
-    <p class="lbl" style="margin:12px 0 4px">Forecast unavailable</p>${wetBlock(c,d)}</div>`;
-  const dx=d.dx,t0=dx.t0;
+  if(!d)return`<div class="city skel"><div class="name"><b>${esc(c.city)}</b><span class="site">${esc(c.site)}</span></div>
+    <div class="pair"><div class="half hi"><u>High</u><em>—</em></div><div class="half lo"><u>Low</u><em>—</em></div></div></div>`;
+  const dx=d.dx;
+  const head=`<div class="name"><b>${esc(c.city)}</b><span class="site">${esc(c.site)}</span>
+    ${dx&&dx.hi&&dx.hi.locked?'<span class="lockbadge">HIGH LOCKED</span>':''}
+    ${dx&&dx.lo&&dx.lo.locked?'<span class="lockbadge">LOW LOCKED</span>':''}
+    ${dx&&dx.dst?'<span class="lockbadge" style="border-color:var(--rule);color:var(--dim)">CLIMATE DAY 1–1</span>':''}</div>`;
+  if(!dx||!dx.hi)return`<div class="city">${head}
+    <p style="font-family:var(--mono);font-size:10px;color:var(--haze);margin:12px 0 4px">FORECAST UNAVAILABLE</p>${wetBlock(c,d)}</div>`;
   const agree=clamp(1-(dx.spread-0.6)/4.4,0,1);
   const col=agree>0.66?'var(--gain)':agree>0.35?'var(--gold)':'var(--ember)';
   const word=agree>0.66?'models agree closely':agree>0.35?'some model disagreement':'models disagree a lot';
@@ -546,32 +643,36 @@ function card(c){
   let chk='';
   if(dx.bias.rmse!=null||tk){
     chk=`<div class="chk">`;
-    if(dx.bias.rmse!=null){
-      const b=dx.bias.bias;
-      chk+=`24h vs thermometer: models ${Math.abs(b)<0.3?'on target':`ran ${b>0?'hot':'cold'} <b>${Math.abs(b).toFixed(1)}°</b>`} · typical miss <b>±${dx.bias.rmse.toFixed(1)}°</b> — corrected`;
-    }
-    if(tk){
-      const y=tk.last,hit=Math.abs(y.p-y.a)<=2;
-      chk+=`${dx.bias.rmse!=null?'<br>':''}Yesterday called <b>${y.p}°</b>, settled <b>${y.a}°</b>${y.src==='CLI'?' <span style="color:var(--dim)">(climate report)</span>':''} <span class="${hit?'good':'bad'}">${y.p-y.a>0?'+':''}${y.p-y.a}°</span>`;
-      if(tk.n>1)chk+=` · ${tk.n}d record: MAE ${tk.mae.toFixed(1)}°, ${tk.within2}/${tk.n} within ±2°`;
-    }
+    if(dx.bias.rmse!=null){const b=dx.bias.bias;
+      chk+=`24h vs thermometer: models ${Math.abs(b)<0.3?'on target':`ran ${b>0?'hot':'cold'} <b>${Math.abs(b).toFixed(1)}°</b>`} · typical miss <b>±${dx.bias.rmse.toFixed(1)}°</b> — corrected`}
+    if(tk){const y=tk.last,hit=Math.abs(y.p-y.a)<=2;
+      chk+=`${dx.bias.rmse!=null?'<br>':''}Yesterday called <b>${y.p}°${y.pl!=null?' / '+y.pl+'°':''}</b>, settled <b>${y.a}°${y.al!=null?' / '+y.al+'°':''}</b>${y.src==='CLI'?' <span style="color:var(--dim)">(climate report)</span>':''} <span class="${hit?'good':'bad'}">${y.p-y.a>0?'+':''}${y.p-y.a}°</span>`;
+      if(tk.n>1){chk+=` · ${tk.n}d MAE ${tk.maeHi.toFixed(1)}° high`;
+        if(tk.maeLo!=null)chk+=`, ${tk.maeLo.toFixed(1)}° low`}}
     chk+=`</div>`;
   }
+  let warn='';
+  if(dx.drop)warn+=`<div class="warn"><b>Low not done.</b> Morning min was ${Math.round(dx.obsMin)}°, but ${Math.round(dx.drop.v)}° is forecast around ${dx.drop.hr}h — a later drop still counts for today.</div>`;
+  if(dx.seam)warn+=`<div class="warn"><b>Climate-day seam.</b> Calendar midnight–midnight gives ${Math.round(dx.seam.cal)}°, the settling 1am–1am window gives ${Math.round(dx.seam.cli)}°. We use the settling window.</div>`;
   return`<div class="city">${head}
-    <div class="lbl">Today's high</div>
-    <div class="big"><em>${Math.round(t0.mu)}°</em>
-      <div class="rng"><u>likely range</u>${Math.round(t0.lo)}° – ${Math.round(t0.hi)}°</div></div>
+    <div class="pair">
+      <div class="half hi"><u>High today</u><em>${Math.round(dx.hi.mu)}°</em>
+        <div class="rng">${Math.round(dx.hi.lo)}° – ${Math.round(dx.hi.hi)}°</div></div>
+      <div class="half lo"><u>Low today</u><em>${dx.lo?Math.round(dx.lo.mu)+'°':'—'}</em>
+        <div class="rng">${dx.lo?Math.round(dx.lo.lo)+'° – '+Math.round(dx.lo.hi)+'°':''}</div></div>
+    </div>
     ${curve(c,d)}
     <div class="now">
       <div><u>Now</u><b>${dx.obsNow!=null?Math.round(dx.obsNow)+'°':'—'}</b></div>
       <div><u>Max so far</u><b class="o">${dx.obsMax!=null?Math.round(dx.obsMax)+'°':'—'}</b></div>
+      <div><u>Min so far</u><b class="c">${dx.obsMin!=null?Math.round(dx.obsMin)+'°':'—'}</b></div>
       <div><u>Dew pt</u><b>${dx.last&&dx.last.dew!=null?Math.round(dx.last.dew)+'°':'—'}</b></div>
       <div><u>Sky</u><b style="font-size:12px">${dx.last?esc(dx.last.sky):'—'}</b></div></div>
     <div class="conf"><span>${word}</span><span class="meter"><i style="width:${(agree*100).toFixed(0)}%;background:${col}"></i></span>
-      <span>±${t0.sigma.toFixed(1)}°</span></div>
-    ${chk}
+      <span>±${dx.hi.sigma.toFixed(1)}°/${dx.lo?dx.lo.sigma.toFixed(1):'—'}°</span></div>
+    ${chk}${warn}
     <div class="days">${dx.future.map(x=>`<div class="day"><u>${dow(x.dt)}</u>
-      <b>${Math.round(x.p.mu)}°</b><i>±${x.p.sigma.toFixed(0)}</i></div>`).join('')}</div>
+      <b>${Math.round(x.hi.mu)}°</b><i>${Math.round(x.lo.mu)}°</i></div>`).join('')}</div>
     ${wetBlock(c,d)}
   </div>`;
 }
@@ -581,21 +682,47 @@ function render(){
       S.errs.some(e=>/Failed to fetch|NetworkError|Load failed/i.test(e))
       ?'<br><br>A blocked request means the browser refused a cross-origin call. Serve this over http rather than opening the file directly.':''}</div>`:'';
   const fc=document.getElementById('fCity').value;
-  document.getElementById('list').innerHTML=CITIES.filter(c=>!fc||c.id===fc).map(card).join('')||`<div class="msg"><b>Nothing loaded</b>Tap refresh.</div>`;
+  const fs=document.getElementById('fState').value;
+  const rank=c=>{const dx=S.data[c.id]&&S.data[c.id].dx;
+    if(!dx||!dx.hi)return -1;
+    return (dx.hi.locked?1:0)+(dx.lo&&dx.lo.locked?1:0)};
+  let rows=CITIES.filter(c=>!fc||c.id===fc).map((c,i)=>({c,i,r:rank(c)}));
+  const nBoth=rows.filter(x=>x.r>=2).length, nOne=rows.filter(x=>x.r===1).length;
+  if(fs==='settled')rows=rows.filter(x=>x.r>=1);
+  if(fs==='play')rows=rows.filter(x=>x.r<=0);
+  if(fs!=='az')rows.sort((a,b)=>(b.r-a.r)||(a.i-b.i));
+  let html='',prev=null;
+  for(const x of rows){
+    const g=x.r>=2?'both':x.r===1?'one':'play';
+    if(fs!=='az'&&fs!=='settled'&&fs!=='play'&&g!==prev){
+      const label=g==='both'?'Settled — high &amp; low':g==='one'?'Settled — one side':'Still in play';
+      html+=`<div class="group ${g}"><b>${label}</b><i></i></div>`;
+      prev=g;
+    }
+    html+=card(x.c);
+  }
+  document.getElementById('list').innerHTML=html
+    ||`<div class="msg"><b>${fs==='settled'?'Nothing settled yet':fs==='play'?'Everything is settled':'Nothing loaded'}</b>${
+      fs==='settled'?'Highs lock after the peak; lows lock once nothing colder is left in the window.':'Tap refresh.'}</div>`;
   const rf=document.getElementById('rf');
   rf.disabled=S.busy;rf.textContent=S.busy?'Loading…':'Refresh';
   document.getElementById('when').innerHTML=S.ts
     ?`${S.ts.toLocaleDateString([],{weekday:'short',month:'short',day:'numeric'})}<br>${S.ts.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})}`:'—';
   const rs=Object.values(S.data).map(d=>d.dx&&d.dx.bias&&d.dx.bias.rmse).filter(x=>x!=null);
-  document.getElementById('trust').innerHTML=rs.length
-    ?`Self-check vs ${rs.length} station thermometers, last 24h: typical miss <b>±${mean(rs).toFixed(1)}°</b> after correction — every forecast below has that correction applied`:'';
+  const locks=CITIES.map(c=>{const dx=S.data[c.id]&&S.data[c.id].dx;
+    if(!dx||!dx.hi)return null;return (dx.hi.locked?1:0)+(dx.lo&&dx.lo.locked?1:0)}).filter(x=>x!=null);
+  const bothN=locks.filter(x=>x>=2).length, oneN=locks.filter(x=>x===1).length;
+  document.getElementById('trust').innerHTML=(locks.length
+    ?`<span class="tally"><b>${bothN}</b> fully settled · <s>${oneN}</s> half settled · ${locks.length-bothN-oneN} in play</span>`:'')
+    +(rs.length?`${locks.length?' &nbsp;·&nbsp; ':''}typical miss <b>±${mean(rs).toFixed(1)}°</b> after correction`:'');
   document.getElementById('foot').textContent=S.ts
-    ?'Every load, each model\'s last 30 hours are graded against the station thermometer and its bias removed before it votes; the rest of today starts from the current observation. Yesterday\'s call is graded against the NWS Daily Climate Report — the number these markets settle on. The climate report can print 1\u00B0 above the hourly obs, so the observed max is a conservative floor. Climate days run on standard time year-round; for daily highs the difference almost never matters.':'';
+    ?'Highs and lows are computed over the NWS climate day — midnight to midnight local standard time, so 1am–1am under daylight saving. The observed max floors the high; the observed min caps the low. A low only locks when no remaining hour can undercut it. Yesterday is graded against the NWS Daily Climate Report.':'';
 }
 document.getElementById('rf').onclick=load;
 CITIES.forEach(c=>{const o=document.createElement('option');o.value=c.id;o.textContent=c.city;
   document.getElementById('fCity').appendChild(o)});
 document.getElementById('fCity').onchange=render;
+document.getElementById('fState').onchange=render;
 render();load();
 </script>
 </body>
