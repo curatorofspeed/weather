@@ -104,6 +104,29 @@ main{padding:14px 12px 40px;max-width:640px;margin:0 auto}
   padding:12px 14px;font-family:var(--mono);font-size:11px;color:var(--errfg);margin-bottom:12px;line-height:1.7}
 .foot{font-family:var(--mono);font-size:10px;color:var(--dim);line-height:1.8;padding:6px 4px 0}
 .skel{opacity:.4}
+.ticker{overflow:hidden;border-top:1px solid var(--rule);margin:9px -18px 0;position:relative}
+.ticker::after{content:'';position:absolute;inset:0 0 0 auto;width:34px;pointer-events:none;
+  background:linear-gradient(90deg,transparent,var(--carbon))}
+.tkr-track{display:flex;width:max-content;animation:tkr 60s linear infinite}
+.ticker:hover .tkr-track,.ticker:focus-within .tkr-track{animation-play-state:paused}
+@keyframes tkr{from{transform:translate3d(0,0,0)}to{transform:translate3d(-50%,0,0)}}
+.tkr-item{display:flex;align-items:baseline;gap:6px;padding:7px 13px;font-family:var(--mono);
+  font-size:11.5px;white-space:nowrap;background:none;border:0;border-right:1px solid var(--rule);
+  color:var(--haze);cursor:pointer}
+.tkr-item b{color:var(--obs);font-size:13.5px;font-weight:500;letter-spacing:-.01em}
+.tkr-item.est b{color:var(--dim)}
+.tkr-item.on b{color:var(--ember)}
+.tkr-item .ab{letter-spacing:.07em}
+.tkr-item .ar{font-size:9px}
+.tkr-item .up{color:var(--ember)}
+.tkr-item .dn{color:var(--cool)}
+.tkr-item .rn{color:var(--rain);font-size:9px}
+.tkr-item:hover,.tkr-item:focus-visible{background:var(--soft);color:var(--vapor)}
+@media (prefers-reduced-motion:reduce){
+  .tkr-track{animation:none}
+  .ticker{overflow-x:auto}
+  .ticker::after{display:none}
+}
 .rainb{font-family:var(--mono);font-size:9px;letter-spacing:.08em;padding:2px 6px;border-radius:4px;
   border:1px solid var(--rule);color:var(--dim);white-space:nowrap}
 .rainb.wet{border-color:var(--rain);color:var(--rain);background:var(--rainsoft)}
@@ -170,6 +193,7 @@ main{padding:14px 12px 40px;max-width:640px;margin:0 auto}
     <div class="when" id="when">—</div>
   </div>
   <div class="htrust" id="trust"></div>
+  <div class="ticker" id="tick" hidden><div class="tkr-track"></div></div>
 </header>
 <main><div id="errs"></div><div id="list"></div><p class="foot" id="foot"></p></main>
 
@@ -1044,6 +1068,36 @@ function card(c){
     ${wetBlock(c,d)}
   </div>`;
 }
+let tkrSig='';
+function renderTicker(){
+  const el=document.getElementById('tick');
+  const items=CITIES.map(c=>{
+    const dx=S.data[c.id]&&S.data[c.id].dx;
+    if(!dx||dx.nowTemp==null)return null;
+    return{id:c.id,ab:c.id.replace(/^K/,''),t:Math.round(dx.nowTemp),tr:dx.trend,
+      est:dx.nowSrc!=='obs',rain:!!(dx.rain&&dx.rain.settled)};
+  }).filter(Boolean);
+  if(!items.length){el.hidden=true;tkrSig='';return}
+  el.hidden=false;
+  const sel=document.getElementById('fCity').value;
+  const sig=sel+'~'+items.map(x=>`${x.id}${x.t}${x.tr==null?'':x.tr.toFixed(1)}${x.est?'e':''}${x.rain?'r':''}`).join('|');
+  if(sig===tkrSig)return;                      // don't restart the scroll for nothing
+  tkrSig=sig;
+  const one=items.map(x=>{
+    const a=x.tr==null?'':x.tr>0.4?'<span class="ar up">▲</span>'
+      :x.tr<-0.4?'<span class="ar dn">▼</span>':'<span class="ar">▬</span>';
+    return`<button class="tkr-item${x.est?' est':''}${sel===x.id?' on':''}" data-city="${x.id}"
+      title="${esc(x.ab)} ${x.t}°${x.est?' (model estimate)':''}"><span class="ab">${esc(x.ab)}</span><b>${x.t}°</b>${a}${
+      x.rain?'<span class="rn">&#9670;</span>':''}</button>`;
+  }).join('');
+  /* repeat until the strip is wider than any viewport, then mirror it so
+     the -50% loop is seamless */
+  const reps=Math.max(1,Math.ceil(14/items.length));
+  const base=one.repeat(reps);
+  const track=el.querySelector('.tkr-track');
+  track.innerHTML=base+base.replace(/<button /g,'<button tabindex="-1" aria-hidden="true" ');
+  track.style.animationDuration=Math.max(34,items.length*reps*3)+'s';
+}
 function render(){
   readPalette();
   document.getElementById('errs').innerHTML=S.errs.length
@@ -1085,6 +1139,7 @@ function render(){
   document.getElementById('list').innerHTML=html
     ||`<div class="msg"><b>${fs==='settled'?'Nothing settled yet':fs==='play'?'Everything is settled':'Nothing loaded'}</b>${
       fs==='settled'?'Highs lock after the peak; lows lock once nothing colder is left in the window.':'Tap refresh.'}</div>`;
+  renderTicker();
   const rf=document.getElementById('rf');
   rf.disabled=S.busy;rf.textContent=S.busy?'Loading…':'Refresh';
   document.getElementById('when').innerHTML=S.ts
@@ -1130,6 +1185,12 @@ document.getElementById('th').onclick=async()=>{
 document.getElementById('rf').onclick=load;
 CITIES.forEach(c=>{const o=document.createElement('option');o.value=c.id;o.textContent=c.city;
   document.getElementById('fCity').appendChild(o)});
+document.getElementById('tick').addEventListener('click',e=>{
+  const b=e.target.closest('[data-city]');if(!b)return;
+  const f=document.getElementById('fCity');
+  f.value=(f.value===b.dataset.city)?'':b.dataset.city;
+  render();window.scrollTo({top:0,behavior:'smooth'});
+});
 document.getElementById('fCity').onchange=render;
 document.getElementById('fState').onchange=render;
 (async()=>{
