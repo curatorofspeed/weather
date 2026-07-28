@@ -104,6 +104,11 @@ main{padding:14px 12px 40px;max-width:640px;margin:0 auto}
   padding:12px 14px;font-family:var(--mono);font-size:11px;color:var(--errfg);margin-bottom:12px;line-height:1.7}
 .foot{font-family:var(--mono);font-size:10px;color:var(--dim);line-height:1.8;padding:6px 4px 0}
 .skel{opacity:.4}
+.axcap{display:flex;justify-content:space-between;font-family:var(--mono);font-size:9.5px;color:var(--dim);
+  margin-top:2px;letter-spacing:.03em}
+.axcap .mid{color:var(--haze);letter-spacing:.09em;text-transform:uppercase}
+.axnote{font-family:var(--mono);font-size:10px;color:var(--gold);margin-top:5px;line-height:1.5}
+.rng .why{color:var(--dim);font-size:10px}
 .clocks{display:flex;gap:10px;flex-wrap:wrap;font-family:var(--mono);font-size:10.5px;color:var(--haze);
   margin:0 0 12px;padding:8px 10px;border-radius:8px;background:var(--soft);border:1px solid var(--rule)}
 .clocks span{display:flex;gap:5px;align-items:baseline;white-space:nowrap}
@@ -205,7 +210,8 @@ let PAL={};
 function readPalette(){
   const cs=getComputedStyle(document.documentElement),g=n=>cs.getPropertyValue('--'+n).trim();
   PAL={pulse:g('pulse')||'#38BDF8',ember:g('ember')||'#FF6B35',obs:g('obs')||'#C8B4FF',
-       cool:g('cool')||'#7DA8FF',haze:g('haze')||'#7C8895',dim:g('dim')||'#4C5764'};
+       cool:g('cool')||'#7DA8FF',haze:g('haze')||'#7C8895',dim:g('dim')||'#4C5764',
+       gold:g('gold')||'#F5B32B'};
 }
 function applyTheme(t){
   document.documentElement.dataset.theme=t;
@@ -795,8 +801,13 @@ function curve(c,d){
   const op=dx.inWin.map(o=>{const k=hourKeyTz(new Date(o.t),tz);return{i:idx(k),v:o.temp}}).filter(p=>p.i>=0);
   const all=pts.map(p=>p.v).concat(op.map(p=>p.v));
   const y0=Math.min(...all)-2,y1=Math.max(...all)+2;
-  const N=dx.cKeys.length-1;
+  /* domain runs 0 -> N where N is the window length in hours, so the
+     settling window's tail (after trading stops) has real width */
+  const N=dx.cKeys.length;
   const X=i=>(i/N)*W,Y=v=>H-14-((v-y0)/((y1-y0)||1))*(H-30);
+  const K=clocks(c,dx);
+  const first=tzEpoch(dx.today,dx.dst?1:0,0,c.tz);
+  const iTrade=(K.trade-first)/3.6e6, iWin=(K.window-first)/3.6e6;
   const line=a=>a.map(p=>`${X(p.i).toFixed(1)},${Y(p.v).toFixed(1)}`).join(' ');
   const fut=pts.filter(p=>p.i>=nowI),past=pts.filter(p=>p.i<=nowI);
   const lab=fut.filter(p=>p.i>nowI&&(p.i-nowI)%4===0).slice(0,4);
@@ -824,8 +835,16 @@ function curve(c,d){
      font-family="monospace" text-anchor="middle">${Math.round(p.v)}°</text>
      <text x="${X(p.i).toFixed(1)}" y="${H-1}" fill="${PAL.dim}" font-size="8.5" font-family="monospace" text-anchor="middle">${p.h}h</text>`).join('')}
    ${mark(dx.hi,PAL.ember,'hi')}${mark(dx.lo,PAL.cool,'lo')}
+   ${iWin>iTrade+0.02?`<rect x="${X(iTrade).toFixed(1)}" y="0" width="${(X(iWin)-X(iTrade)).toFixed(1)}" height="${H-12}"
+      fill="${PAL.gold}" opacity=".14"/>
+    <line x1="${X(iTrade).toFixed(1)}" y1="0" x2="${X(iTrade).toFixed(1)}" y2="${H-12}" stroke="${PAL.gold}" stroke-width="1"/>`:''}
    ${nowI>=0?`<line x1="${X(nowI).toFixed(1)}" y1="0" x2="${X(nowI).toFixed(1)}" y2="${H-12}" stroke="${PAL.dim}" stroke-dasharray="2 4"/>`:''}
-  </svg></div>`;
+  </svg>
+  <div class="axcap"><span>${dx.dst?'1:00 AM':'midnight'}</span>
+    <span class="mid">climate window &middot; ${dx.cKeys.length}h</span>
+    <span>${dx.dst?'1:00 AM next day':'midnight next day'}</span></div>
+  ${iWin>iTrade+0.02?`<div class="axnote">Shaded tail still counts toward settlement but trading has closed &mdash; ${K.gap} min.</div>`:''}
+  </div>`;
 }
 function wetBlock(c,d){ /* d.cli = climate report */
   const W=d.wet;if(!W)return'';
@@ -858,6 +877,14 @@ function wetBlock(c,d){ /* d.cli = climate report */
         <b>${set?'✓ settled':dead?'—':Math.round(x.p*100)+'%'}</b></div>`}).join('')}</div>`;
   }
   return out+`</div>`;
+}
+/* a locked extreme can still shift a degree, because the climate report
+   is not the same arithmetic as the hourly observations */
+function rngText(e){
+  const a=Math.round(e.lo),b=Math.round(e.hi),m=Math.round(e.mu);
+  if(!e.locked)return`${a}° – ${b}°`;
+  if(a===b&&a===m)return`${m}° &middot; locked`;
+  return`${a}° – ${b}° <span class="why">report rounding</span>`;
 }
 function clockStrip(c,dx){
   const K=clocks(c,dx),now=Date.now();
@@ -928,9 +955,9 @@ function card(c){
     ${nowLine(c,dx)}
     <div class="pair">
       <div class="half hi"><u>High today</u><em>${Math.round(dx.hi.mu)}°</em>
-        <div class="rng">${Math.round(dx.hi.lo)}° – ${Math.round(dx.hi.hi)}°</div></div>
+        <div class="rng">${rngText(dx.hi)}</div></div>
       <div class="half lo"><u>Low today</u><em>${dx.lo?Math.round(dx.lo.mu)+'°':'—'}</em>
-        <div class="rng">${dx.lo?Math.round(dx.lo.lo)+'° – '+Math.round(dx.lo.hi)+'°':''}</div></div>
+        <div class="rng">${dx.lo?rngText(dx.lo):''}</div></div>
     </div>
     ${curve(c,d)}
     <div class="now">
