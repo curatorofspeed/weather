@@ -104,6 +104,21 @@ main{padding:14px 12px 40px;max-width:640px;margin:0 auto}
   padding:12px 14px;font-family:var(--mono);font-size:11px;color:var(--errfg);margin-bottom:12px;line-height:1.7}
 .foot{font-family:var(--mono);font-size:10px;color:var(--dim);line-height:1.8;padding:6px 4px 0}
 .skel{opacity:.4}
+.rainb{font-family:var(--mono);font-size:9px;letter-spacing:.08em;padding:2px 6px;border-radius:4px;
+  border:1px solid var(--rule);color:var(--dim);white-space:nowrap}
+.rainb.wet{border-color:var(--rain);color:var(--rain);background:var(--rainsoft)}
+.rainb.hi{border-color:var(--rain);color:var(--rain)}
+.rainb.mid{border-color:rgba(94,200,245,.42);color:var(--rain);opacity:.85}
+.rainb.lo{opacity:.7}
+.rainb.dry{opacity:.45}
+.prog{display:flex;gap:10px;margin-top:10px;font-family:var(--mono);font-size:10.5px;line-height:1.5}
+.prog>div{flex:1;min-width:0;color:var(--haze)}
+.prog b{font-weight:500;color:var(--vapor)}
+.prog .risk b{color:var(--gold)}
+.prog .done b{color:var(--gain)}
+.prog .track{display:block;height:3px;background:var(--rule);border-radius:2px;margin-top:5px;position:relative}
+.prog .track i{display:block;height:100%;border-radius:2px;background:var(--haze);opacity:.45}
+.prog .track u{position:absolute;top:-2px;width:2px;height:7px;background:var(--vapor);border-radius:1px}
 .axcap{display:flex;justify-content:space-between;font-family:var(--mono);font-size:9.5px;color:var(--dim);
   margin-top:2px;letter-spacing:.03em}
 .axcap .mid{color:var(--haze);letter-spacing:.09em;text-transform:uppercase}
@@ -134,6 +149,7 @@ main{padding:14px 12px 40px;max-width:640px;margin:0 auto}
 .group.one{color:var(--obs)}
 .tally{font-family:var(--mono);font-size:10.5px;color:var(--haze)}
 .tally b{color:var(--gain);font-weight:500}
+.tally.wetsum b{color:var(--rain)}
 .tally s{color:var(--obs);text-decoration:none;font-weight:500}
 </style>
 </head>
@@ -146,6 +162,7 @@ main{padding:14px 12px 40px;max-width:640px;margin:0 auto}
       <option value="">Settled first</option>
       <option value="settled">Settled only</option>
       <option value="play">Still in play</option>
+      <option value="rain">Wettest first</option>
       <option value="az">A–Z</option>
     </select>
     <button class="refresh" id="th" aria-label="Toggle light or dark theme">☀</button>
@@ -483,6 +500,25 @@ function todayExtreme(win,keys,nowKey,obsNow,obsBound,spread,dir){
   if(obsBound!=null){ if(dir>0&&lo<obsBound)lo=obsBound; if(dir<0&&hi>obsBound)hi=obsBound; }
   return{mu,sigma,lo,hi,off,peakKey,locked,remaining:rem.length};
 }
+/* Where in the window the extreme forms, and how much of the day's
+   remaining swing can still change it. dir=+1 peak, dir=-1 trough. */
+function extremeProgress(win,keys,nowKey,obsBound,dir){
+  const present=keys.filter(k=>win[k]!=null);
+  if(!present.length)return null;
+  const better=(a,b)=>dir>0?a>b:a<b;
+  let wV=null,wK=null;
+  for(const k of present)if(wV==null||better(win[k].v,wV)){wV=win[k].v;wK=k}
+  let rV=null,rK=null;
+  for(const k of present){if(k<nowKey)continue;if(rV==null||better(win[k].v,rV)){rV=win[k].v;rK=k}}
+  const risk=(obsBound!=null&&rV!=null)?Math.max(0,dir>0?rV-obsBound:obsBound-rV):null;
+  const iN=keys.indexOf(nowKey),iW=keys.indexOf(wK),iR=keys.indexOf(rK),L=keys.length-1;
+  return{v:wV,hr:wK?+wK.slice(11,13):null,passed:wK!=null&&wK<nowKey,
+    remV:rV,remHr:rK?+rK.slice(11,13):null,risk,
+    hoursLeft:present.filter(k=>k>=nowKey).length,
+    frac:iN<0?null:clamp(iN/L,0,1),
+    wFrac:iW<0?null:clamp(iW/L,0,1),
+    rFrac:iR<0?null:clamp(iR/L,0,1)};
+}
 /* a later drop below the morning minimum — the classic low-temp trap */
 function frontalDrop(win,keys,nowKey,obsBound){
   if(obsBound==null)return null;
@@ -642,6 +678,9 @@ function derive(c,d){
   const hi=todayExtreme(win,cKeys,nowKey,obsNow,obsMax,spread,+1);
   const lo=todayExtreme(win,cKeys,nowKey,obsNow,obsMin,spread,-1);
   const drop=frontalDrop(win,cKeys,nowKey,obsMin);
+  const rain=rainToday(d.wet,cKeys,nowKey);
+  const progHi=extremeProgress(win,cKeys,nowKey,obsMax,+1);
+  const progLo=extremeProgress(win,cKeys,nowKey,obsMin,-1);
 
   /* does the calendar-day answer differ from the climate-day answer? */
   let seam=null;
@@ -663,36 +702,34 @@ function derive(c,d){
     return{dt,hi:futureExtreme(cs,ks,w,+1),lo:futureExtreme(cs,ks,w,-1)};
   }).filter(x=>x.hi&&x.lo);
 
-  return{today,nowHr,nowKey,dst,win,cKeys,hi,lo,drop,seam,future,bias,
+  return{today,nowHr,nowKey,dst,win,cKeys,hi,lo,drop,seam,future,bias,progHi,progLo,rain,
     obsMax,obsMin,obsNow,nowTemp,nowSrc,obsAge,stale,trend,last,inWin,spread};
 }
 
 /* ── rain (unchanged) ────────────────────────────────────────────── */
-function rainToday(W,tz,today){
+function rainToday(W,cKeys,nowKey){
   if(!W||!W.daily)return null;
-  const di=W.daily.time.indexOf(today);
+  const day=cKeys[0].slice(0,10);
+  const di=W.daily.time.indexOf(day);
   const fcast=di>=0?W.daily.precipitation_sum[di]:null;
   const pop=di>=0&&W.daily.precipitation_probability_max?W.daily.precipitation_probability_max[di]:null;
-  let fell=0,have=false;const hr=hourIn(tz);
+  const kset=new Set(cKeys);
+  let fell=0,have=false,ahead=0,firstK=null,lastK=null;
   if(W.hourly&&W.hourly.time)for(let i=0;i<W.hourly.time.length;i++){
-    const t=W.hourly.time[i];if(t.slice(0,10)!==today)continue;
-    if(+t.slice(11,13)>hr)continue;
-    const v=W.hourly.precipitation[i];if(v!=null){fell+=v;have=true}
+    const k=W.hourly.time[i].slice(0,13);
+    if(!kset.has(k))continue;
+    const v=W.hourly.precipitation[i];
+    if(v==null)continue;
+    if(k<=nowKey){fell+=v;have=true}
+    else{ahead+=v;if(v>=WET){if(firstK==null)firstK=k;lastK=k}}
   }
   const settled=have&&fell>=WET;
-  let p=settled?1:(pop!=null?pop/100:(fcast>=WET?0.6:0.1));
-  if(!settled&&have&&fcast!=null&&Math.max(0,fcast-fell)<WET/2)p=Math.min(p,0.08);
-  return{fell:have?fell:null,settled,p:clamp(p,0,1),fcast,win:rainWindow(W,today,hr)};
-}
-function rainWindow(W,today,nowHr){
-  if(!W.hourly||!W.hourly.time)return null;
-  const hrs=[];
-  for(let i=0;i<W.hourly.time.length;i++){
-    const t=W.hourly.time[i];if(t.slice(0,10)!==today)continue;
-    const h=+t.slice(11,13);if(h<nowHr)continue;
-    if((W.hourly.precipitation[i]||0)>=WET)hrs.push(h);
-  }
-  return hrs.length?{a:hrs[0],b:hrs[hrs.length-1]}:null;
+  let p=settled?1:(pop!=null?pop/100:(ahead>=WET?0.6:0.1));
+  /* a daily POP covers hours already past — if nothing is left in the
+     forecast, the chance is not still 40% */
+  if(!settled&&have&&ahead<WET/2)p=Math.min(p,0.06);
+  return{fell:have?fell:null,settled,p:clamp(p,0,1),fcast,ahead,
+    win:firstK?{a:+firstK.slice(11,13),b:+lastK.slice(11,13)}:null};
 }
 function monthOutlook(c,W,CL,today,cli){
   if(!W||!W.daily)return null;
@@ -849,7 +886,7 @@ function curve(c,d){
 function wetBlock(c,d){ /* d.cli = climate report */
   const W=d.wet;if(!W)return'';
   const today=dayKey(new Date().toISOString(),c.tz);
-  const R=rainToday(W,c.tz,today),M=monthOutlook(c,W,S.climo[c.id],today,d.cli);
+  const R=d.dx?d.dx.rain:null,M=monthOutlook(c,W,S.climo[c.id],today,d.cli);
   if(!R&&!M)return'';
   const mn=new Date(today+'T12:00:00').toLocaleDateString([],{month:'long'});
   let out=`<div class="wet"><div style="font-family:var(--mono);font-size:10px;letter-spacing:.11em;text-transform:uppercase;color:var(--haze);margin-bottom:9px">Rain &amp; snow</div>`;
@@ -880,6 +917,38 @@ function wetBlock(c,d){ /* d.cli = climate report */
 }
 /* a locked extreme can still shift a degree, because the climate report
    is not the same arithmetic as the hourly observations */
+const hh=h=>h==null?'—':String(h).padStart(2,'0')+'h';
+function progCol(p,ext,dir){
+  if(!p)return'<div></div>';
+  const word=dir>0?'Peak':'Trough';
+  const locked=ext&&ext.locked;
+  let cls='',txt;
+  if(locked){cls='done';
+    txt=`<b>${word} ${hh(p.hr)}</b> · nothing ${dir>0?'warmer':'colder'} in the last ${p.hoursLeft}h of window`}
+  else if(p.risk!=null&&p.risk>=0.5){cls='risk';
+    txt=`<b>${word} ${hh(p.remHr)}</b> · ${p.risk.toFixed(1)}° ${dir>0?'upside':'downside'} left`}
+  else if(!p.passed)txt=`<b>${word} due ${hh(p.hr)}</b> · ${p.hoursLeft}h of window left`;
+  else txt=`<b>${word} ${hh(p.hr)}</b> · ${p.hoursLeft}h left, none of it colder`;
+  if(!locked&&dir<0&&p.risk!=null&&p.risk<0.5&&p.passed)
+    txt=`<b>${word} ${hh(p.hr)}</b> · ${p.hoursLeft}h left, nothing colder due`;
+  const mark=p.wFrac==null?'':`<u style="left:calc(${(p.wFrac*100).toFixed(1)}% - 1px)"></u>`;
+  const risky=(!locked&&p.risk!=null&&p.risk>=0.5&&p.rFrac!=null)
+    ?`<u style="left:calc(${(p.rFrac*100).toFixed(1)}% - 1px);background:var(--gold);height:9px;top:-3px"></u>`:'';
+  return`<div class="${cls}">${txt}
+    <span class="track"><i style="width:${((p.frac||0)*100).toFixed(1)}%"></i>${mark}${risky}</span></div>`;
+}
+function rainBadge(r){
+  if(!r)return'';
+  if(r.settled)return`<span class="rainb wet">RAINED ${r.fell.toFixed(2)}"</span>`;
+  const p=Math.round(r.p*100);
+  const cls=p>=60?'hi':p>=30?'mid':p>=10?'lo':'dry';
+  const when=r.win?` ${r.win.a}–${r.win.b}h`:'';
+  return`<span class="rainb ${cls}">RAIN ${p}%${p>=30?when:''}</span>`;
+}
+function progressRow(dx){
+  if(!dx.progHi&&!dx.progLo)return'';
+  return`<div class="prog">${progCol(dx.progHi,dx.hi,+1)}${progCol(dx.progLo,dx.lo,-1)}</div>`;
+}
 function rngText(e){
   const a=Math.round(e.lo),b=Math.round(e.hi),m=Math.round(e.mu);
   if(!e.locked)return`${a}° – ${b}°`;
@@ -928,6 +997,7 @@ function card(c){
   const head=`<div class="name"><b>${esc(c.city)}</b><span class="site">${esc(c.site)}</span>
     ${dx&&dx.hi&&dx.hi.locked?'<span class="lockbadge">HIGH LOCKED</span>':''}
     ${dx&&dx.lo&&dx.lo.locked?'<span class="lockbadge">LOW LOCKED</span>':''}
+    ${dx?rainBadge(dx.rain):''}
 </div>`;
   if(!dx||!dx.hi)return`<div class="city">${head}
     <p style="font-family:var(--mono);font-size:10px;color:var(--haze);margin:12px 0 4px">FORECAST UNAVAILABLE</p>${wetBlock(c,d)}</div>`;
@@ -967,6 +1037,7 @@ function card(c){
       <div><u>Sky</u><b style="font-size:12px">${dx.last?esc(dx.last.sky):'—'}</b></div></div>
     <div class="conf"><span>${word}</span><span class="meter"><i style="width:${(agree*100).toFixed(0)}%;background:${col}"></i></span>
       <span>±${dx.hi.sigma.toFixed(1)}°/${dx.lo?dx.lo.sigma.toFixed(1):'—'}°</span></div>
+    ${progressRow(dx)}
     ${chk}${warn}
     <div class="days">${dx.future.map(x=>`<div class="day"><u>${dow(x.dt)}</u>
       <b>${Math.round(x.hi.mu)}°</b><i>${Math.round(x.lo.mu)}°</i></div>`).join('')}</div>
@@ -984,18 +1055,30 @@ function render(){
   const rank=c=>{const dx=S.data[c.id]&&S.data[c.id].dx;
     if(!dx||!dx.hi)return -1;
     return (dx.hi.locked?1:0)+(dx.lo&&dx.lo.locked?1:0)};
-  let rows=CITIES.filter(c=>!fc||c.id===fc).map((c,i)=>({c,i,r:rank(c)}));
+  const rainOf=c=>{const dx=S.data[c.id]&&S.data[c.id].dx;return dx&&dx.rain?dx.rain.p:-1};
+  let rows=CITIES.filter(c=>!fc||c.id===fc).map((c,i)=>({c,i,r:rank(c),w:rainOf(c)}));
   const nBoth=rows.filter(x=>x.r>=2).length, nOne=rows.filter(x=>x.r===1).length;
   if(fs==='settled')rows=rows.filter(x=>x.r>=1);
   if(fs==='play')rows=rows.filter(x=>x.r<=0);
-  if(fs!=='az')rows.sort((a,b)=>(b.r-a.r)||(a.i-b.i));
+  if(fs==='rain')rows.sort((a,b)=>(b.w-a.w)||(a.i-b.i));
+  else if(fs!=='az')rows.sort((a,b)=>(b.r-a.r)||(a.i-b.i));
   let html='',prev=null;
   for(const x of rows){
-    const g=x.r>=2?'both':x.r===1?'one':'play';
-    if(fs!=='az'&&fs!=='settled'&&fs!=='play'&&g!==prev){
-      const label=g==='both'?'Settled — high &amp; low':g==='one'?'Settled — one side':'Still in play';
-      html+=`<div class="group ${g}"><b>${label}</b><i></i></div>`;
-      prev=g;
+    if(fs==='rain'){
+      const g=x.w>=0.999?'wet':x.w>=0.5?'likely':x.w>=0.15?'possible':x.w>=0?'dry':'none';
+      if(g!==prev){
+        const label={wet:'Already rained',likely:'Likely rain today',
+          possible:'Possible',dry:'Likely dry',none:'No rain data'}[g];
+        html+=`<div class="group ${g==='wet'||g==='likely'?'one':''}"><b>${label}</b><i></i></div>`;
+        prev=g;
+      }
+    }else{
+      const g=x.r>=2?'both':x.r===1?'one':'play';
+      if(fs!=='az'&&fs!=='settled'&&fs!=='play'&&g!==prev){
+        const label=g==='both'?'Settled — high &amp; low':g==='one'?'Settled — one side':'Still in play';
+        html+=`<div class="group ${g}"><b>${label}</b><i></i></div>`;
+        prev=g;
+      }
     }
     html+=card(x.c);
   }
@@ -1015,9 +1098,14 @@ function render(){
     ?`trading <b>${new Date(cds[0]+'T12:00:00').toLocaleDateString([],{month:'short',day:'numeric'})}</b>`
     :`trading <b>${cds.map(d=>new Date(d+'T12:00:00').toLocaleDateString([],{month:'short',day:'numeric'})).join(' / ')}</b> — zones differ`)
     :'';
+  const wet=CITIES.map(c=>{const dx=S.data[c.id]&&S.data[c.id].dx;
+    return dx&&dx.rain?{n:c.city,p:dx.rain.p,s:dx.rain.settled}:null}).filter(Boolean)
+    .sort((a,b)=>b.p-a.p).slice(0,3).filter(x=>x.p>=0.2);
+  const wetTxt=wet.length?`wettest <b>${wet.map(x=>`${esc(x.n)} ${x.s?'✓':Math.round(x.p*100)+'%'}`).join(', ')}</b>`:'';
   const rep=CITIES.map(c=>{const dx=S.data[c.id]&&S.data[c.id].dx;return dx?dx.nowSrc:null}).filter(Boolean);
   const live=rep.filter(x=>x==='obs').length;
   document.getElementById('trust').innerHTML=(dayTxt?`<span class="tally">${dayTxt}</span> &nbsp;·&nbsp; `:'')
+    +(wetTxt?`<span class="tally wetsum">${wetTxt}</span> &nbsp;·&nbsp; `:'')
     +(rep.length&&live<rep.length
     ?`<span class="tally"><s>${live}/${rep.length}</s> stations reporting &nbsp;·&nbsp; </span>`:'')
     +(locks.length
