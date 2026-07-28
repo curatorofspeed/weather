@@ -104,6 +104,7 @@ main{padding:14px 12px 40px;max-width:640px;margin:0 auto}
   padding:12px 14px;font-family:var(--mono);font-size:11px;color:var(--errfg);margin-bottom:12px;line-height:1.7}
 .foot{font-family:var(--mono);font-size:10px;color:var(--dim);line-height:1.8;padding:6px 4px 0}
 .skel{opacity:.4}
+.note-src{font-family:var(--mono);font-size:10px;color:var(--gold);margin:2px 0 6px}
 .group{font-family:var(--mono);font-size:10px;letter-spacing:.14em;text-transform:uppercase;
   color:var(--haze);margin:2px 2px 9px;display:flex;align-items:center;gap:10px}
 .group+.city{margin-top:0}
@@ -180,6 +181,7 @@ const CITIES=[
  {id:'KMSY',city:'New Orleans',site:'Armstrong Intl',lat:29.9934,lon:-90.2581,tz:'America/Chicago'},
 ];
 const MODELS=['gfs_hrrr','ncep_nbm_conus','ecmwf_ifs025','gfs_seamless'];
+const MLABEL={gfs_hrrr:'HRRR',ncep_nbm_conus:'NBM',ecmwf_ifs025:'ECMWF',gfs_seamless:'GFS'};
 const W_NEAR={gfs_hrrr:40,ncep_nbm_conus:30,ecmwf_ifs025:20,gfs_seamless:10};
 const W_FAR ={gfs_hrrr:0, ncep_nbm_conus:30,ecmwf_ifs025:42,gfs_seamless:28};
 const WET=0.01, LADDER=[0.25,0.5,1,1.5,2,3,4,5,6,7,8,9,10,12,15];
@@ -214,8 +216,30 @@ const q=(sorted,p)=>{if(!sorted.length)return null;const i=clamp(p,0,1)*(sorted.
   return lo===hi?sorted[lo]:sorted[lo]+(sorted[hi]-sorted[lo])*(i-lo)};
 const store={async get(k){try{if(window.storage){const r=await window.storage.get(k,false);return r?JSON.parse(r.value):null}}catch(e){}return null},
   async set(k,v){try{if(window.storage)await window.storage.set(k,JSON.stringify(v),false)}catch(e){}}};
-async function jget(u){const r=await fetch(u,{headers:{Accept:'application/json'}});
-  if(!r.ok)throw new Error(r.status+' '+r.statusText);return r.json()}
+const sleep=ms=>new Promise(r=>setTimeout(r,ms));
+const memCache={};
+async function jget(u,tries){
+  tries=tries||3;
+  for(let i=0;i<tries;i++){
+    let r;
+    try{r=await fetch(u,{headers:{Accept:'application/json'}})}
+    catch(e){if(i<tries-1){await sleep(600*(i+1));continue}throw e}
+    if(r.status===429||r.status===503||r.status===502){
+      const ra=parseFloat(r.headers.get('Retry-After')||'0');
+      if(i<tries-1){await sleep(ra?Math.min(ra*1000,10000):Math.min(9000,800*Math.pow(2.6,i)));continue}
+      throw new Error(r.status===429?'rate limited':'service busy');
+    }
+    if(!r.ok)throw new Error(r.status+' '+r.statusText);
+    return r.json();
+  }
+}
+async function cachedMem(key,ttl,fn){
+  const c=memCache[key];
+  if(c&&Date.now()-c.at<ttl)return c.v;
+  const v=await fn();
+  memCache[key]={at:Date.now(),v};
+  return v;
+}
 
 /* ── the climate day: midnight–midnight LOCAL STANDARD time ──────── */
 function tzOffsetMin(tz,d){
@@ -253,20 +277,77 @@ function calendarKeys(date){
 }
 
 /* ── fetch ───────────────────────────────────────────────────────── */
-async function models(c){
-  const u=`https://api.open-meteo.com/v1/forecast?latitude=${c.lat}&longitude=${c.lon}`
-   +`&hourly=temperature_2m&models=${MODELS.join(',')}&temperature_unit=fahrenheit`
-   +`&timezone=${encodeURIComponent(c.tz)}&forecast_days=6&past_days=2`;
-  const raw=await jget(u),blocks=Array.isArray(raw)?raw:[raw],out={};
-  for(const b of blocks){
-    const h=b.hourly;if(!h||!h.time)continue;
-    if(b.model&&h.temperature_2m){out[b.model]={t:h.time,v:h.temperature_2m};continue}
-    let hit=false;
-    for(const m of MODELS)if(h['temperature_2m_'+m]){out[m]={t:h.time,v:h['temperature_2m_'+m]};hit=true}
-    if(!hit&&h.temperature_2m)out[MODELS[0]]={t:h.time,v:h.temperature_2m};
+const CHUNK=10, GAP=260;
+/* Open-Meteo accepts comma-separated coordinates and returns one block per
+   location. One model per call keeps the response shape unambiguous, so the
+   whole board costs 4 requests instead of 80. */
+async function fetchTempsBatched(){
+  const out={};
+  for(let i=0;i<CITIES.length;i+=CHUNK){
+    const grp=CITIES.slice(i,i+CHUNK);
+    const lat=grp.map(c=>c.lat).join(','),lon=grp.map(c=>c.lon).join(',');
+    for(const m of MODELS){
+      let raw;
+      try{
+        raw=await cachedMem(`t|${m}|${i}`,9*60000,()=>jget(
+          `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}`
+          +`&hourly=temperature_2m&models=${m}&temperature_unit=fahrenheit`
+          +`&timezone=auto&forecast_days=6&past_days=2`));
+      }catch(e){S.errs.push(`${MLABEL[m]||m} temperatures: ${e.message}`);await sleep(GAP);continue}
+      const arr=Array.isArray(raw)?raw:[raw];
+      arr.forEach((b,j)=>{
+        const c=grp[j];
+        if(!c||!b||!b.hourly||!b.hourly.time||!b.hourly.temperature_2m)return;
+        (out[c.id]=out[c.id]||{})[m]={t:b.hourly.time,v:b.hourly.temperature_2m};
+        if(b.timezone&&b.timezone!==c.tz)S.tzWarn=(S.tzWarn||[]).concat(`${c.city}: ${b.timezone}`);
+      });
+      await sleep(GAP);
+    }
   }
   return out;
 }
+async function fetchWetBatched(){
+  const out={};
+  for(let i=0;i<CITIES.length;i+=CHUNK){
+    const grp=CITIES.slice(i,i+CHUNK);
+    const lat=grp.map(c=>c.lat).join(','),lon=grp.map(c=>c.lon).join(',');
+    let raw;
+    try{
+      raw=await cachedMem(`w|${i}`,9*60000,()=>jget(
+        `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}`
+        +`&hourly=precipitation&daily=precipitation_sum,snowfall_sum,precipitation_probability_max`
+        +`&precipitation_unit=inch&timezone=auto&past_days=31&forecast_days=16`));
+    }catch(e){S.errs.push(`rain forecast: ${e.message}`);await sleep(GAP);continue}
+    const arr=Array.isArray(raw)?raw:[raw];
+    arr.forEach((b,j)=>{const c=grp[j];if(c&&b&&b.daily)out[c.id]=b});
+    await sleep(GAP);
+  }
+  return out;
+}
+async function fetchClimoBatched(){
+  const out={};
+  for(let i=0;i<CITIES.length;i+=CHUNK){
+    const grp=CITIES.slice(i,i+CHUNK);
+    const ck='climo_v2_'+i, hit=await store.get(ck);
+    if(hit&&Date.now()-hit.at<30*864e5){Object.assign(out,hit.v);continue}
+    const lat=grp.map(c=>c.lat).join(','),lon=grp.map(c=>c.lon).join(',');
+    let raw;
+    try{
+      raw=await jget(`https://archive-api.open-meteo.com/v1/archive?latitude=${lat}&longitude=${lon}`
+        +`&start_date=${daysAgo(365*7)}&end_date=${daysAgo(7)}&daily=precipitation_sum`
+        +`&precipitation_unit=inch&timezone=auto`);
+    }catch(e){S.errs.push(`rain history: ${e.message}`);await sleep(GAP);continue}
+    const arr=Array.isArray(raw)?raw:[raw],part={};
+    arr.forEach((b,j)=>{const c=grp[j];
+      if(!c||!b||!b.daily||!b.daily.time)return;
+      part[c.id]=b.daily.time.map((t,k)=>({d:t,v:b.daily.precipitation_sum[k]})).filter(r=>r.v!=null)});
+    Object.assign(out,part);
+    await store.set(ck,{at:Date.now(),v:part});
+    await sleep(GAP);
+  }
+  return out;
+}
+
 async function obs(c){
   const since=new Date(Date.now()-54*36e5).toISOString().replace(/\.\d+Z$/,'Z');
   const d=await jget(`https://api.weather.gov/stations/${c.id}/observations?start=${since}&limit=260`);
@@ -277,22 +358,6 @@ async function obs(c){
       sky:(p.cloudLayers||[]).map(l=>l.amount).join('/')||'CLR'}})
     .filter(r=>r.temp!=null).sort((a,b)=>new Date(a.t)-new Date(b.t));
 }
-async function wet(c){
-  return jget(`https://api.open-meteo.com/v1/forecast?latitude=${c.lat}&longitude=${c.lon}`
-   +`&hourly=precipitation&daily=precipitation_sum,snowfall_sum,precipitation_probability_max`
-   +`&precipitation_unit=inch&timezone=${encodeURIComponent(c.tz)}&past_days=32&forecast_days=16`);
-}
-async function climo(c){
-  const k='climo_'+c.id,cached=await store.get(k);
-  if(cached&&Date.now()-cached.at<30*864e5)return cached.rows;
-  const d=await jget(`https://archive-api.open-meteo.com/v1/archive?latitude=${c.lat}&longitude=${c.lon}`
-   +`&start_date=${daysAgo(365*7)}&end_date=${daysAgo(7)}&daily=precipitation_sum`
-   +`&precipitation_unit=inch&timezone=${encodeURIComponent(c.tz)}`);
-  const rows=(d.daily&&d.daily.time||[]).map((t,i)=>({d:t,v:d.daily.precipitation_sum[i]})).filter(r=>r.v!=null);
-  await store.set(k,{at:Date.now(),rows});
-  return rows;
-}
-
 /* ── grade each model against the thermometer, remove its bias ───── */
 function fitBias(mod,obsArr,tz,nowKey){
   const om={};
@@ -404,22 +469,38 @@ function futureExtreme(cs,keys,wset,dir){
 }
 
 /* ── settlement source: NWS Daily Climate Report ─────────────────── */
-function parseCli(v,which){
-  if(!v)return null;
-  const rows=v.results||v.data||(Array.isArray(v)?v:[v]);
-  for(const x of rows||[]){
-    const raw = which==='low'
-      ? (x.low??x.low_temperature??(x.temperature&&x.temperature.low))
-      : (x.high??x.high_temperature??(x.temperature&&x.temperature.high));
-    const n=parseFloat(raw);
-    if(isFinite(n)&&n>=-60&&n<=140)return Math.round(n);
+function cliRows(v){return v?(v.results||v.data||(Array.isArray(v)?v:[v])||[]):[]}
+function cliNum(rows,keys,lo,hi){
+  for(const x of rows){
+    for(const k of keys){
+      let raw=x[k];
+      if(raw==null&&x.temperature)raw=x.temperature[k];
+      if(raw==null||raw==='M'||raw==='T')continue;   // M = missing, T = trace
+      const n=parseFloat(raw);
+      if(isFinite(n)&&n>=lo&&n<=hi)return n;
+    }
+    /* a trace still counts as measurable-adjacent but not as 0.01" */
+    for(const k of keys)if(x[k]==='T')return 0.005;
   }
   return null;
 }
+/* Kalshi monthly rain settles on "total monthly precipitation recorded at the
+   NWS station, as reported in the Daily Climate Report" — so the CLI is the
+   instrument, not a model grid. The CLI for date D carries month-to-date
+   through D, which is exactly the banked figure. */
 async function fetchCli(stationId,date){
   try{
-    const v=await jget(`https://mesonet.agron.iastate.edu/json/cli.py?station=${stationId}&date=${date}`);
-    return{hi:parseCli(v,'high'),lo:parseCli(v,'low')};
+    const rows=cliRows(await jget(
+      `https://mesonet.agron.iastate.edu/json/cli.py?station=${stationId}&date=${date}`));
+    if(!rows.length)return null;
+    const r=n=>n==null?null:Math.round(n);
+    return{
+      hi:r(cliNum(rows,['high','high_temperature'],-60,140)),
+      lo:r(cliNum(rows,['low','low_temperature'],-60,140)),
+      precip:cliNum(rows,['precip','precipitation','precip_today'],0,40),
+      precipMonth:cliNum(rows,['precip_month','precipitation_month','month_precip','precip_mtd'],0,300),
+      snowMonth:cliNum(rows,['snow_month','snowfall_month','snow_mtd'],0,400)
+    };
   }catch(e){return null}
 }
 
@@ -447,13 +528,12 @@ function trackStats(arr){
     maeLo:el.length?mean(el.map(Math.abs)):null,nLo:el.length,
     within2:eh.filter(e=>Math.abs(e)<=2).length,last:done[done.length-1]};
 }
-async function updateTrack(c,tz,today,predHi,predLo,obsArr,dst){
+async function updateTrack(c,tz,today,predHi,predLo,obsArr,dst,cli){
   const k='trk_'+c.id;
   let arr=(await store.get(k))||[];
   const yday=prevDay(today);
   const open=arr.find(x=>x.d===yday&&(x.a==null||x.al==null));
   if(open){
-    const cli=await fetchCli(c.id,yday);
     if(cli){
       if(cli.hi!=null){open.a=cli.hi;open.src='CLI'}
       if(cli.lo!=null){open.al=cli.lo;open.src='CLI'}
@@ -547,20 +627,40 @@ function rainWindow(W,today,nowHr){
   }
   return hrs.length?{a:hrs[0],b:hrs[hrs.length-1]}:null;
 }
-function monthOutlook(c,W,CL,today){
+function monthOutlook(c,W,CL,today,cli){
   if(!W||!W.daily)return null;
   const ym=today.slice(0,7),D=W.daily,T=D.time;
   const lastDay=new Date(Date.UTC(+ym.slice(0,4),+ym.slice(5,7),0)).getUTCDate();
   const todayN=+today.slice(8,10);
-  let banked=0,snow=0,bDays=0,fc=0,fcDays=0,lastFc=null;
+  /* grid fallback for everything the gauge can't tell us */
+  let gridPrior=0,gridPriorDays=0,todayGrid=0,fc=0,fcDays=0,lastFc=null,snowGrid=0;
   for(let i=0;i<T.length;i++){
     if(T[i].slice(0,7)!==ym)continue;
     const dn=+T[i].slice(8,10),v=D.precipitation_sum[i];
+    if(D.snowfall_sum&&D.snowfall_sum[i]!=null)snowGrid+=D.snowfall_sum[i];
     if(v==null)continue;
-    if(dn<todayN){banked+=v;bDays++}else{fc+=v;fcDays++;lastFc=dn}
-    if(D.snowfall_sum&&D.snowfall_sum[i]!=null)snow+=D.snowfall_sum[i];
+    if(dn<todayN){gridPrior+=v;gridPriorDays++}
+    else if(dn===todayN){todayGrid=v}
+    else{fc+=v;fcDays++;lastFc=dn}
   }
-  const covered=lastFc||todayN-1,gapStart=covered+1,gapDays=Math.max(0,lastDay-covered);
+  /* today's elapsed hours, so "already fallen" isn't double counted */
+  let todaySoFar=0,haveHourly=false;
+  if(W.hourly&&W.hourly.time){
+    const hr=hourIn(c.tz);
+    for(let i=0;i<W.hourly.time.length;i++){
+      const t=W.hourly.time[i];
+      if(t.slice(0,10)!==today||+t.slice(11,13)>hr)continue;
+      const v=W.hourly.precipitation[i];if(v!=null){todaySoFar+=v;haveHourly=true}
+    }
+  }
+  /* the gauge wins when the climate report has it */
+  const gauge = cli&&cli.precipMonth!=null;
+  const banked = gauge ? cli.precipMonth : gridPrior;
+  const bDays  = gauge ? todayN-1 : gridPriorDays;
+  const live   = haveHourly?todaySoFar:todayGrid;
+  const todayRest = Math.max(0,todayGrid-live);
+
+  const covered=lastFc||todayN,gapStart=covered+1,gapDays=Math.max(0,lastDay-covered);
   let samples=[];
   if(gapDays>0&&CL&&CL.length){
     const byYear={};
@@ -572,39 +672,50 @@ function monthOutlook(c,W,CL,today){
   let seed=(c.id.charCodeAt(1)*7919+todayN)>>>0;
   const rnd=()=>{seed=(seed*1103515245+12345)&0x7fffffff;return seed/0x7fffffff};
   const gs=()=>{let u=0,v=0;while(!u)u=rnd();while(!v)v=rnd();return Math.sqrt(-2*Math.log(u))*Math.cos(2*Math.PI*v)};
+  const floor=banked+live;                       // already in the gauge or on the ground
+  const soft=fc+todayRest;                       // forecast, uncertain
   const tot=[],N=3000;
   for(let i=0;i<N;i++){
-    const fcErr=fc>0?fc*Math.exp(gs()*0.38):0;
-    const gap=samples.length?samples[Math.floor(rnd()*samples.length)]*Math.exp(gs()*0.12):0;
-    tot.push(banked+fcErr+gap);
+    const f=soft>0?soft*Math.exp(gs()*0.38):0;
+    const g=samples.length?samples[Math.floor(rnd()*samples.length)]*Math.exp(gs()*0.12):0;
+    tot.push(floor+f+g);
   }
   tot.sort((a,b)=>a-b);
   const med=q(tot,0.5),lo=q(tot,0.2),hi=q(tot,0.8);
   const P=T0=>tot.filter(x=>x>T0).length/N;
   const above=LADDER.filter(x=>x>med),below=LADDER.filter(x=>x<=med);
   const picks=[below.length?below[below.length-1]:LADDER[0],above.length?above[0]:LADDER[LADDER.length-1]];
-  return{banked,bDays,fc,fcDays,gapDays,med,lo,hi,lastDay,snow,
-    snowUnit:(W.daily_units&&W.daily_units.snowfall_sum)||'cm',climYears:samples.length,
-    thresholds:[...new Set(picks)].map(t=>({t,p:banked>t?1:P(t)}))};
+  return{banked,bDays,live,fc:soft,fcDays,gapDays,med,lo,hi,lastDay,gauge,
+    snow:(cli&&cli.snowMonth!=null)?cli.snowMonth:snowGrid,
+    snowGauge:!!(cli&&cli.snowMonth!=null),
+    snowUnit:(cli&&cli.snowMonth!=null)?'in':((W.daily_units&&W.daily_units.snowfall_sum)||'cm'),
+    climYears:samples.length,
+    thresholds:[...new Set(picks)].map(t=>({t,p:floor>t?1:P(t)}))};
 }
 
 /* ── load ────────────────────────────────────────────────────────── */
 async function load(){
-  if(S.busy)return;S.busy=true;S.errs=[];render();
-  for(let i=0;i<CITIES.length;i+=5){
-    await Promise.allSettled(CITIES.slice(i,i+5).map(async c=>{
-      const[m,o,w,cl]=await Promise.allSettled([models(c),obs(c),wet(c),climo(c)]);
-      if(m.status==='rejected')S.errs.push(`${c.city} forecast: ${m.reason.message}`);
-      if(w.status==='rejected')S.errs.push(`${c.city} rain: ${w.reason.message}`);
-      const data={mod:m.status==='fulfilled'?m.value:null,
-        obs:o.status==='fulfilled'?o.value:[],wet:w.status==='fulfilled'?w.value:null};
-      if(cl.status==='fulfilled')S.climo[c.id]=cl.value;
-      data.dx=derive(c,data);
-      S.data[c.id]=data;
-      if(data.dx&&data.dx.hi)await updateTrack(c,c.tz,data.dx.today,data.dx.hi.mu,
-        data.dx.lo?data.dx.lo.mu:null,data.obs,data.dx.dst);
+  if(S.busy)return;S.busy=true;S.errs=[];S.tzWarn=null;render();
+  const[temps,wets,climos]=[await fetchTempsBatched(),await fetchWetBatched(),await fetchClimoBatched()];
+  S.climo=climos;
+  CITIES.forEach(c=>{S.data[c.id]=Object.assign(S.data[c.id]||{},
+    {mod:temps[c.id]||null,wet:wets[c.id]||null,obs:(S.data[c.id]||{}).obs||[]})});
+  render();
+  /* per-station calls are unavoidable — throttle them rather than burst */
+  for(let i=0;i<CITIES.length;i+=4){
+    await Promise.allSettled(CITIES.slice(i,i+4).map(async c=>{
+      const d=S.data[c.id];
+      try{d.obs=await cachedMem('o|'+c.id,7*60000,()=>obs(c))}
+      catch(e){if(S.errs.length<4)S.errs.push(`${c.city} observations: ${e.message}`)}
+      d.dx=derive(c,d);
+      if(d.dx){
+        const yday=prevDay(d.dx.today);
+        try{d.cli=await cachedMem('cli|'+c.id+'|'+yday,30*60000,()=>fetchCli(c.id,yday))}catch(e){}
+        await updateTrack(c,c.tz,d.dx.today,d.dx.hi?d.dx.hi.mu:null,
+          d.dx.lo?d.dx.lo.mu:null,d.obs,d.dx.dst,d.cli);
+      }
     }));
-    render();
+    await sleep(180);render();
   }
   S.ts=new Date();S.busy=false;render();
 }
@@ -655,10 +766,10 @@ function curve(c,d){
    ${nowI>=0?`<line x1="${X(nowI).toFixed(1)}" y1="0" x2="${X(nowI).toFixed(1)}" y2="${H-12}" stroke="${PAL.dim}" stroke-dasharray="2 4"/>`:''}
   </svg></div>`;
 }
-function wetBlock(c,d){
+function wetBlock(c,d){ /* d.cli = climate report */
   const W=d.wet;if(!W)return'';
   const today=dayKey(new Date().toISOString(),c.tz);
-  const R=rainToday(W,c.tz,today),M=monthOutlook(c,W,S.climo[c.id],today);
+  const R=rainToday(W,c.tz,today),M=monthOutlook(c,W,S.climo[c.id],today,d.cli);
   if(!R&&!M)return'';
   const mn=new Date(today+'T12:00:00').toLocaleDateString([],{month:'long'});
   let out=`<div class="wet"><div style="font-family:var(--mono);font-size:10px;letter-spacing:.11em;text-transform:uppercase;color:var(--haze);margin-bottom:9px">Rain &amp; snow</div>`;
@@ -671,13 +782,16 @@ function wetBlock(c,d){
   }
   if(M){
     const tot=Math.max(M.med,0.01);
-    const wB=clamp(M.banked/tot*100,0,100),wF=clamp(M.fc/tot*100,0,100-wB);
-    out+=`<div class="wetrow"><u>${esc(mn)}</u><b class="fell">${M.banked.toFixed(2)}"</b>
-      <span>banked over ${M.bDays} day${M.bDays===1?'':'s'} · can't un-fall</span></div>
+    const wB=clamp((M.banked+M.live)/tot*100,0,100),wF=clamp(M.fc/tot*100,0,100-wB);
+    out+=`<div class="wetrow"><u>${esc(mn)}</u><b class="fell">${(M.banked+M.live).toFixed(2)}"</b>
+      <span>${M.gauge?'climate report':'model estimate'} through ${M.bDays} day${M.bDays===1?'':'s'}${
+        M.live>=0.005?` + ${M.live.toFixed(2)}" today`:''} · can't un-fall</span></div>
      <div class="bar"><i class="banked" style="width:${wB.toFixed(1)}%"></i><i class="fc" style="width:${wF.toFixed(1)}%"></i></div>
      <div class="wetrow"><u>Month end</u><b>${M.med.toFixed(2)}"</b>
        <span>${M.lo.toFixed(2)}–${M.hi.toFixed(2)}" · ${M.fcDays}d forecast${M.gapDays?` + ${M.gapDays}d from ${M.climYears} yrs`:''}</span></div>`;
-    if(M.snow>0.05)out+=`<div class="wetrow"><u>Snow</u><b>${M.snow.toFixed(1)}</b><span>${esc(M.snowUnit)} this month</span></div>`;
+    if(!M.gauge)out+=`<div class="note-src">Climate report unavailable — month-to-date is a model estimate, not the settling gauge.</div>`;
+    if(M.snow>0.05)out+=`<div class="wetrow"><u>Snow</u><b>${M.snow.toFixed(1)}${M.snowUnit==='in'?'"':''}</b><span>${
+      M.snowGauge?'climate report':esc(M.snowUnit)+' — model estimate'} this month</span></div>`;
     out+=`<div class="thr">${M.thresholds.map(x=>{const set=x.p>=0.999,dead=x.p<=0.02;
       return`<div class="tchip ${set?'set':dead?'dead':''}"><u>above ${x.t}"</u>
         <b>${set?'✓ settled':dead?'—':Math.round(x.p*100)+'%'}</b></div>`}).join('')}</div>`;
