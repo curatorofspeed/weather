@@ -104,6 +104,25 @@ main{padding:14px 12px 40px;max-width:640px;margin:0 auto}
   padding:12px 14px;font-family:var(--mono);font-size:11px;color:var(--errfg);margin-bottom:12px;line-height:1.7}
 .foot{font-family:var(--mono);font-size:10px;color:var(--dim);line-height:1.8;padding:6px 4px 0}
 .skel{opacity:.4}
+.book{margin-top:12px;border-top:1px solid var(--rule);padding-top:10px}
+.bkhead{font-family:var(--mono);font-size:9.5px;letter-spacing:.11em;text-transform:uppercase;
+  color:var(--haze);margin-bottom:7px}
+.bklead{font-family:var(--mono);font-size:11px;color:var(--haze);line-height:1.6;margin-bottom:7px;
+  padding:7px 9px;border-radius:7px;background:var(--soft);border:1px solid var(--rule)}
+.bklead b{color:var(--vapor);font-weight:500}
+.bklead.edge{border-color:rgba(61,214,140,.4)}
+.bklead .gp{color:var(--gain);font-weight:500}
+.bkrow{display:grid;grid-template-columns:1fr 54px 54px 44px;gap:6px;font-family:var(--mono);
+  font-size:11.5px;padding:3px 0;color:var(--haze);align-items:baseline}
+.bkrow.top .bs,.bkrow.top .bm{color:var(--vapor)}
+.bkrow .bs{letter-spacing:.02em}
+.bkrow .bm{text-align:right;color:var(--pulse)}
+.bkrow .bk{text-align:right;color:var(--ember)}
+.bkrow .bg{text-align:right;color:var(--dim)}
+.bkrow .bg.over{color:var(--gain)}
+.bkrow .bg.under{color:var(--loss)}
+.bknote{font-family:var(--mono);font-size:9.5px;color:var(--dim);margin-top:6px}
+.ksrc{color:var(--dim);font-size:9.5px}
 .ticker{overflow:hidden;border-top:1px solid var(--rule);margin:9px -18px 0;position:relative}
 .ticker::after{content:'';position:absolute;inset:0 0 0 auto;width:34px;pointer-events:none;
   background:linear-gradient(90deg,transparent,var(--carbon))}
@@ -188,6 +207,7 @@ main{padding:14px 12px 40px;max-width:640px;margin:0 auto}
       <option value="rain">Wettest first</option>
       <option value="az">A–Z</option>
     </select>
+    <button class="refresh" id="kb" aria-pressed="true">Kalshi on</button>
     <button class="refresh" id="th" aria-label="Toggle light or dark theme">☀</button>
     <button class="refresh" id="rf">Refresh</button>
     <div class="when" id="when">—</div>
@@ -219,26 +239,26 @@ main{padding:14px 12px 40px;max-width:640px;margin:0 auto}
    ══════════════════════════════════════════════════════════════════════ */
 
 const CITIES=[
- {id:'KNYC',city:'New York',site:'Central Park',lat:40.7794,lon:-73.9692,tz:'America/New_York'},
- {id:'KMDW',city:'Chicago',site:"Midway — not O'Hare",lat:41.7861,lon:-87.7524,tz:'America/Chicago'},
- {id:'KMIA',city:'Miami',site:'Miami Intl',lat:25.7906,lon:-80.2871,tz:'America/New_York'},
- {id:'KAUS',city:'Austin',site:'Bergstrom',lat:30.1975,lon:-97.6664,tz:'America/Chicago'},
- {id:'KLAX',city:'Los Angeles',site:'LAX',lat:33.9425,lon:-118.4081,tz:'America/Los_Angeles'},
- {id:'KDEN',city:'Denver',site:'Denver Intl',lat:39.8617,lon:-104.6731,tz:'America/Denver'},
- {id:'KPHX',city:'Phoenix',site:'Sky Harbor · no DST',lat:33.4342,lon:-112.0116,tz:'America/Phoenix'},
- {id:'KPHL',city:'Philadelphia',site:'PHL',lat:39.8683,lon:-75.2311,tz:'America/New_York'},
- {id:'KHOU',city:'Houston',site:'Hobby — not Bush',lat:29.6459,lon:-95.2769,tz:'America/Chicago'},
- {id:'KMSP',city:'Minneapolis',site:'MSP',lat:44.8848,lon:-93.2223,tz:'America/Chicago'},
- {id:'KOKC',city:'Oklahoma City',site:'Will Rogers',lat:35.3931,lon:-97.6008,tz:'America/Chicago'},
- {id:'KSFO',city:'San Francisco',site:'SFO',lat:37.6188,lon:-122.3750,tz:'America/Los_Angeles'},
- {id:'KDCA',city:'Washington',site:'National',lat:38.8512,lon:-77.0402,tz:'America/New_York'},
- {id:'KBOS',city:'Boston',site:'Logan',lat:42.3606,lon:-71.0106,tz:'America/New_York'},
- {id:'KDFW',city:'Dallas',site:'DFW — not Love',lat:32.8998,lon:-97.0403,tz:'America/Chicago'},
- {id:'KSEA',city:'Seattle',site:'SeaTac',lat:47.4444,lon:-122.3138,tz:'America/Los_Angeles'},
- {id:'KLAS',city:'Las Vegas',site:'Harry Reid',lat:36.0840,lon:-115.1537,tz:'America/Los_Angeles'},
- {id:'KATL',city:'Atlanta',site:'Hartsfield',lat:33.6301,lon:-84.4418,tz:'America/New_York'},
- {id:'KSAT',city:'San Antonio',site:'San Antonio Intl',lat:29.5337,lon:-98.4698,tz:'America/Chicago'},
- {id:'KMSY',city:'New Orleans',site:'Armstrong Intl',lat:29.9934,lon:-90.2581,tz:'America/Chicago'},
+ {ks:'NY',kt:0,id:'KNYC',city:'New York',site:'Central Park',lat:40.7794,lon:-73.9692,tz:'America/New_York'},
+ {ks:'CHI',kt:0,id:'KMDW',city:'Chicago',site:"Midway — not O'Hare",lat:41.7861,lon:-87.7524,tz:'America/Chicago'},
+ {ks:'MIA',kt:0,id:'KMIA',city:'Miami',site:'Miami Intl',lat:25.7906,lon:-80.2871,tz:'America/New_York'},
+ {ks:'AUS',kt:0,id:'KAUS',city:'Austin',site:'Bergstrom',lat:30.1975,lon:-97.6664,tz:'America/Chicago'},
+ {ks:'LAX',kt:0,id:'KLAX',city:'Los Angeles',site:'LAX',lat:33.9425,lon:-118.4081,tz:'America/Los_Angeles'},
+ {ks:'DEN',kt:0,id:'KDEN',city:'Denver',site:'Denver Intl',lat:39.8617,lon:-104.6731,tz:'America/Denver'},
+ {ks:'PHX',kt:1,id:'KPHX',city:'Phoenix',site:'Sky Harbor · no DST',lat:33.4342,lon:-112.0116,tz:'America/Phoenix'},
+ {ks:'PHIL',kt:0,id:'KPHL',city:'Philadelphia',site:'PHL',lat:39.8683,lon:-75.2311,tz:'America/New_York'},
+ {ks:'HOU',kt:1,id:'KHOU',city:'Houston',site:'Hobby — not Bush',lat:29.6459,lon:-95.2769,tz:'America/Chicago'},
+ {ks:'MIN',kt:1,id:'KMSP',city:'Minneapolis',site:'MSP',lat:44.8848,lon:-93.2223,tz:'America/Chicago'},
+ {ks:'OKC',kt:1,id:'KOKC',city:'Oklahoma City',site:'Will Rogers',lat:35.3931,lon:-97.6008,tz:'America/Chicago'},
+ {ks:'SFO',kt:1,id:'KSFO',city:'San Francisco',site:'SFO',lat:37.6188,lon:-122.3750,tz:'America/Los_Angeles'},
+ {ks:'DC',kt:1,id:'KDCA',city:'Washington',site:'National',lat:38.8512,lon:-77.0402,tz:'America/New_York'},
+ {ks:'BOS',kt:1,id:'KBOS',city:'Boston',site:'Logan',lat:42.3606,lon:-71.0106,tz:'America/New_York'},
+ {ks:'DAL',kt:1,id:'KDFW',city:'Dallas',site:'DFW — not Love',lat:32.8998,lon:-97.0403,tz:'America/Chicago'},
+ {ks:'SEA',kt:1,id:'KSEA',city:'Seattle',site:'SeaTac',lat:47.4444,lon:-122.3138,tz:'America/Los_Angeles'},
+ {ks:'LV',kt:1,id:'KLAS',city:'Las Vegas',site:'Harry Reid',lat:36.0840,lon:-115.1537,tz:'America/Los_Angeles'},
+ {ks:'ATL',kt:1,id:'KATL',city:'Atlanta',site:'Hartsfield',lat:33.6301,lon:-84.4418,tz:'America/New_York'},
+ {ks:'SATX',kt:1,id:'KSAT',city:'San Antonio',site:'San Antonio Intl',lat:29.5337,lon:-98.4698,tz:'America/Chicago'},
+ {ks:'NOLA',kt:1,id:'KMSY',city:'New Orleans',site:'Armstrong Intl',lat:29.9934,lon:-90.2581,tz:'America/Chicago'},
 ];
 const MODELS=['gfs_hrrr','ncep_nbm_conus','ecmwf_ifs025','gfs_seamless'];
 const MLABEL={gfs_hrrr:'HRRR',ncep_nbm_conus:'NBM',ecmwf_ifs025:'ECMWF',gfs_seamless:'GFS'};
@@ -246,7 +266,7 @@ const W_NEAR={gfs_hrrr:40,ncep_nbm_conus:30,ecmwf_ifs025:20,gfs_seamless:10};
 const W_FAR ={gfs_hrrr:0, ncep_nbm_conus:30,ecmwf_ifs025:42,gfs_seamless:28};
 const WET=0.01, LADDER=[0.25,0.5,1,1.5,2,3,4,5,6,7,8,9,10,12,15];
 
-const S={data:{},climo:{},track:{},errs:[],busy:false,ts:null};
+const S={data:{},climo:{},track:{},errs:[],busy:false,ts:null,kalshi:true};
 let PAL={};
 function readPalette(){
   const cs=getComputedStyle(document.documentElement),g=n=>cs.getPropertyValue('--'+n).trim();
@@ -340,12 +360,17 @@ function tzEpoch(dateStr,hh,mm,tz){
      settle — expiration, 10:00 AM ET the morning after
    Under daylight saving the window outlives trading by 61 minutes, so the
    final hour that can move the value is not tradeable. */
-function clocks(c,dx){
+function clocks(c,dx,kClose){
   const D=dx.today, nx=nextDay(D);
-  const trade=tzEpoch(D,23,59,c.tz);
   const window=tzEpoch(nx,dx.dst?1:0,0,c.tz);
+  /* Kalshi closes at 11:59 PM local STANDARD time — one minute before the
+     climate window shuts, in every season. Under daylight saving that reads
+     12:59 AM on the wall clock. Their own close_time is authoritative when
+     we have it. */
+  const trade=(kClose!=null&&isFinite(kClose))?kClose:window-60000;
   const settle=tzEpoch(nx,10,0,'America/New_York');
-  return{D,nx,trade,window,settle,gap:Math.round((window-trade)/60000)};
+  return{D,nx,trade,window,settle,gap:Math.round((window-trade)/60000),
+    kSrc:kClose!=null&&isFinite(kClose)};
 }
 function fmtLeft(ms){
   if(ms<=0)return null;
@@ -450,6 +475,113 @@ async function obs(c){
       sky:(p.cloudLayers||[]).map(l=>l.amount).join('/')||'CLR'}})
     .filter(r=>r.temp!=null).sort((a,b)=>new Date(a.t)-new Date(b.t));
 }
+/* ══ live Kalshi book ═══════════════════════════════════════════════
+   Public market data only — no auth, no orders. Prices are read
+   defensively because the schema has moved: integer cents, *_dollars
+   strings and float dollars have all shipped. */
+const KBASES=['https://api.elections.kalshi.com/trade-api/v2',
+              'https://external-api.kalshi.com/trade-api/v2'];
+let KBASE=0, kFails=0;
+const SER=(c,dir)=>(c.kt?(dir>0?'KXHIGHT':'KXLOWT'):(dir>0?'KXHIGH':'KXLOW'))+c.ks;
+
+function kUnits(m){
+  if(m.response_price_units==='usd_cent')return 100;
+  const v=['yes_bid','yes_ask','no_bid','no_ask','last_price']
+    .map(k=>parseFloat(m[k])).filter(x=>isFinite(x));
+  return (v.length&&!v.some(x=>x>1.0001))?1:100;   // 1 => dollars, 100 => cents
+}
+function kPx(m,base){
+  const d=m[base+'_dollars'];
+  if(d!=null&&d!==''){const v=parseFloat(d);if(isFinite(v))return v*100}
+  const r=m[base];
+  if(r==null||r==='')return null;
+  const v=parseFloat(r);
+  if(!isFinite(v))return null;
+  return kUnits(m)===1?v*100:v;
+}
+function kBucket(m){
+  const st=(m.strike_type||'').toLowerCase(),f=m.floor_strike,c=m.cap_strike;
+  const up=(v,x)=>Number.isInteger(v)?(x?v+1:v):Math.ceil(v);
+  const dn=(v,x)=>Number.isInteger(v)?(x?v-1:v):Math.floor(v);
+  const G=f!=null?f:(c!=null?c:null);
+  if(st==='between'||(f!=null&&c!=null))return{lo:up(f,0),hi:dn(c,0)};
+  if(G!=null){
+    if(st==='greater')return{lo:up(G,1),hi:null};
+    if(st==='greater_or_equal')return{lo:up(G,0),hi:null};
+    if(st==='less')return{lo:null,hi:dn(G,1)};
+    if(st==='less_or_equal')return{lo:null,hi:dn(G,0)};
+    return f!=null?{lo:up(G,0),hi:null}:{lo:null,hi:dn(G,0)};
+  }
+  return null;
+}
+function bLabel(b){
+  if(!b)return'—';
+  if(b.lo!=null&&b.hi!=null)return b.lo===b.hi?`${b.lo}°`:`${b.lo}–${b.hi}°`;
+  if(b.lo!=null)return`${b.lo}°+`;
+  if(b.hi!=null)return`≤${b.hi}°`;
+  return'—';
+}
+const MO2={'01':'JAN','02':'FEB','03':'MAR','04':'APR','05':'MAY','06':'JUN',
+  '07':'JUL','08':'AUG','09':'SEP','10':'OCT','11':'NOV','12':'DEC'};
+function evTag(date){return date.slice(2,4)+MO2[date.slice(5,7)]+date.slice(8,10)}
+function evMatches(ev,date){
+  const t=evTag(date),alt=t.replace(/([A-Z]{3})0/,'$1');
+  return ev===t||ev===alt;
+}
+async function kFetchSeries(c,dir){
+  const ser=SER(c,dir);
+  for(let a=0;a<KBASES.length;a++){
+    const base=KBASES[(KBASE+a)%KBASES.length];
+    try{
+      const d=await jget(`${base}/markets?series_ticker=${ser}&status=open&limit=400`,2);
+      KBASE=(KBASE+a)%KBASES.length;
+      return d.markets||[];
+    }catch(e){ if(a===KBASES.length-1)throw e }
+  }
+  return[];
+}
+/* normal CDF, only needed to turn our forecast into bucket probabilities */
+function nCdf(z){
+  const t=1/(1+0.2316419*Math.abs(z)),d=Math.exp(-z*z/2)/2.5066282746310002;
+  const p=d*t*(0.319381530+t*(-0.356563782+t*(1.781477937+t*(-1.821255978+t*1.330274429))));
+  return z>0?1-p:p;
+}
+/* predictive probability for one strike bucket, respecting the observed bound */
+function modelP(ext,bound,dir,b){
+  if(!ext||!b)return null;
+  const F=x=>{
+    let p=nCdf((x-ext.mu)/ext.sigma);
+    if(bound!=null){
+      if(dir>0){const l=nCdf((bound-0.5-ext.mu)/ext.sigma);p=l<0.999?(p-l)/(1-l):(x>=bound?1:0)}
+      else{const h=nCdf((bound+0.5-ext.mu)/ext.sigma);p=h>0.001?p/h:(x>=bound?1:0)}
+    }
+    return clamp(p,0,1);
+  };
+  const a=b.lo==null?-1e4:b.lo-0.5, z=b.hi==null?1e4:b.hi+0.5;
+  return clamp(F(z)-F(a),0,1);
+}
+function kBuild(c,dx,mkts,dir){
+  if(!mkts||!mkts.length)return null;
+  const ext=dir>0?dx.hi:dx.lo, bound=dir>0?dx.obsMax:dx.obsMin;
+  if(!ext)return null;
+  const rows=mkts.filter(m=>evMatches((m.event_ticker||'').split('-')[1]||'',dx.today))
+    .map(m=>{
+      const b=kBucket(m);
+      const yb=kPx(m,'yes_bid'),ya=kPx(m,'yes_ask'),last=kPx(m,'last_price');
+      const live=ya!=null&&ya>0&&ya<100&&yb!=null&&yb>0;
+      const mid=live?(yb+ya)/2:(last!=null&&last>0?last:null);
+      return{t:m.ticker,b,lab:bLabel(b),yb,ya,mid,
+        spread:live?ya-yb:null,close:m.close_time?Date.parse(m.close_time):null,
+        p:modelP(ext,bound,dir,b)};
+    }).filter(r=>r.b&&r.p!=null)
+    .sort((a,b2)=>(a.b.lo??a.b.hi??0)-(b2.b.lo??b2.b.hi??0));
+  if(!rows.length)return null;
+  rows.forEach(r=>{r.gap=(r.mid==null)?null:r.p*100-r.mid});
+  const best=rows.reduce((a,b2)=>b2.p>a.p?b2:a,rows[0]);
+  const close=rows.map(r=>r.close).filter(Boolean).sort()[0]||null;
+  return{rows,best,close,locked:!!ext.locked};
+}
+
 /* ── grade each model against the thermometer, remove its bias ───── */
 function fitBias(mod,obsArr,tz,nowKey){
   const om={};
@@ -846,6 +978,30 @@ async function load(){
     await sleep(180);render();
   }
   S.ts=new Date();S.busy=false;render();
+  if(S.kalshi)loadKalshi();
+}
+async function loadKalshi(){
+  const list=CITIES.filter(c=>S.data[c.id]&&S.data[c.id].dx);
+  let okCount=0,tried=0;
+  for(const c of list){
+    const d=S.data[c.id];
+    for(const dir of [1,-1]){
+      tried++;
+      try{
+        const mk=await cachedMem(`k|${c.id}|${dir}`,90000,()=>kFetchSeries(c,dir));
+        const built=kBuild(c,d.dx,mk,dir);
+        if(dir>0)d.kHi=built; else d.kLo=built;
+        if(built){okCount++;if(built.close)d.dx.kClose=built.close}
+      }catch(e){ kFails++ }
+      await sleep(140);
+    }
+    if(tried>=6&&okCount===0){                    // blocked outright — stop asking
+      S.kalshi=false;
+      S.errs.push('Kalshi book unavailable from the browser — the exchange is refusing cross-origin requests. Weather is unaffected.');
+      render();return;
+    }
+    render();
+  }
 }
 
 /* ── curve: whole climate day, both extremes marked ──────────────── */
@@ -866,7 +1022,7 @@ function curve(c,d){
      settling window's tail (after trading stops) has real width */
   const N=dx.cKeys.length;
   const X=i=>(i/N)*W,Y=v=>H-14-((v-y0)/((y1-y0)||1))*(H-30);
-  const K=clocks(c,dx);
+  const K=clocks(c,dx,dx.kClose);
   const first=tzEpoch(dx.today,dx.dst?1:0,0,c.tz);
   const iTrade=(K.trade-first)/3.6e6, iWin=(K.window-first)/3.6e6;
   const line=a=>a.map(p=>`${X(p.i).toFixed(1)},${Y(p.v).toFixed(1)}`).join(' ');
@@ -904,7 +1060,7 @@ function curve(c,d){
   <div class="axcap"><span>${dx.dst?'1:00 AM':'midnight'}</span>
     <span class="mid">climate window &middot; ${dx.cKeys.length}h</span>
     <span>${dx.dst?'1:00 AM next day':'midnight next day'}</span></div>
-  ${iWin>iTrade+0.02?`<div class="axnote">Shaded tail still counts toward settlement but trading has closed &mdash; ${K.gap} min.</div>`:''}
+  ${K.gap>3?`<div class="axnote">Shaded tail still counts toward settlement but trading has closed &mdash; ${K.gap} min.</div>`:''}
   </div>`;
 }
 function wetBlock(c,d){ /* d.cli = climate report */
@@ -961,6 +1117,38 @@ function progCol(p,ext,dir){
   return`<div class="${cls}">${txt}
     <span class="track"><i style="width:${((p.frac||0)*100).toFixed(1)}%"></i>${mark}${risky}</span></div>`;
 }
+function bookBlock(d,dir){
+  const K=dir>0?d.kHi:d.kLo, dx=d.dx;
+  if(!K)return'';
+  const ext=dir>0?dx.hi:dx.lo;
+  const near=K.rows.filter(r=>r.p>=0.02||Math.abs(r.gap||0)>=6).slice(0,6);
+  const rows=(near.length?near:K.rows.slice(0,4));
+  const head=dir>0?'High':'Low';
+  const b=K.best;
+  let lead='';
+  if(K.locked&&b){
+    const price=b.mid==null?null:Math.round(b.mid);
+    lead=`<div class="bklead ${price!=null&&b.gap>=6?'edge':''}">
+      <b>${head} locked</b> · model puts ${Math.round(b.p*100)}% on <b>${esc(b.lab)}</b>
+      ${price!=null?` · book ${price}¢${b.gap>=6?` <span class="gp">+${Math.round(b.gap)}</span>`:''}`
+        :' · no two-sided quote'}</div>`;
+  }
+  return`<div class="book">
+    <div class="bkhead">Kalshi ${head.toLowerCase()} book${K.close?` · closes ${new Date(K.close).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})}`:''}</div>
+    ${lead}
+    ${rows.map(r=>{
+      const mid=r.mid==null?null:Math.round(r.mid);
+      const g=r.gap==null?null:Math.round(r.gap);
+      const cls=g==null?'':g>=6?'over':g<=-6?'under':'';
+      return`<div class="bkrow ${r===b?'top':''}">
+        <span class="bs">${esc(r.lab)}</span>
+        <span class="bm">${Math.round(r.p*100)}%</span>
+        <span class="bk">${mid==null?'—':mid+'¢'}</span>
+        <span class="bg ${cls}">${g==null?'':(g>0?'+':'')+g}</span>
+      </div>`}).join('')}
+    <div class="bknote">model % vs book mid, in cents. Difference is not a recommendation.</div>
+  </div>`;
+}
 function rainBadge(r){
   if(!r)return'';
   if(r.settled)return`<span class="rainb wet">RAINED ${r.fell.toFixed(2)}"</span>`;
@@ -980,7 +1168,7 @@ function rngText(e){
   return`${a}° – ${b}° <span class="why">report rounding</span>`;
 }
 function clockStrip(c,dx){
-  const K=clocks(c,dx),now=Date.now();
+  const K=clocks(c,dx,dx.kClose),now=Date.now();
   const label=new Date(K.D+'T12:00:00').toLocaleDateString([],{month:'short',day:'numeric'});
   const chip=(txt,at,cls)=>{
     const left=fmtLeft(at-now);
@@ -992,6 +1180,7 @@ function clockStrip(c,dx){
     ${chip('trade closes',K.trade)}
     ${chip('window closes',K.window,K.gap>1?'gap':'')}
     ${sDone?'<span class="done">settled <b>&mdash;</b></span>':chip('settles',K.settle)}
+    ${K.kSrc?'<span class="ksrc">exchange clock</span>':''}
     ${wClosed&&!sDone?'<span class="fixed">value fixed &middot; awaiting report</span>':''}
   </div>`;
 }
@@ -1062,6 +1251,7 @@ function card(c){
     <div class="conf"><span>${word}</span><span class="meter"><i style="width:${(agree*100).toFixed(0)}%;background:${col}"></i></span>
       <span>±${dx.hi.sigma.toFixed(1)}°/${dx.lo?dx.lo.sigma.toFixed(1):'—'}°</span></div>
     ${progressRow(dx)}
+    ${bookBlock(d,+1)}${bookBlock(d,-1)}
     ${chk}${warn}
     <div class="days">${dx.future.map(x=>`<div class="day"><u>${dow(x.dt)}</u>
       <b>${Math.round(x.hi.mu)}°</b><i>${Math.round(x.lo.mu)}°</i></div>`).join('')}</div>
@@ -1185,6 +1375,13 @@ document.getElementById('th').onclick=async()=>{
 document.getElementById('rf').onclick=load;
 CITIES.forEach(c=>{const o=document.createElement('option');o.value=c.id;o.textContent=c.city;
   document.getElementById('fCity').appendChild(o)});
+document.getElementById('kb').onclick=()=>{
+  S.kalshi=!S.kalshi;
+  const b=document.getElementById('kb');
+  b.textContent=S.kalshi?'Kalshi on':'Kalshi off';
+  b.setAttribute('aria-pressed',String(S.kalshi));
+  if(S.kalshi)loadKalshi(); else{CITIES.forEach(c=>{if(S.data[c.id]){S.data[c.id].kHi=null;S.data[c.id].kLo=null}});render()}
+};
 document.getElementById('tick').addEventListener('click',e=>{
   const b=e.target.closest('[data-city]');if(!b)return;
   const f=document.getElementById('fCity');
