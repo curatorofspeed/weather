@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-theme="light">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
@@ -1508,8 +1508,7 @@ document.getElementById('fState').onchange=render;
   const kb=document.getElementById('kb');
   kb.value=S.kalshi?(PROXIES[S.kproxy]?S.kproxy:(S.kproxy?'custom':'')):'off';
   let t=await store.get('theme');
-  if(t!=='light'&&t!=='dark')
-    t=(window.matchMedia&&window.matchMedia('(prefers-color-scheme: light)').matches)?'light':'dark';
+  if(t!=='light'&&t!=='dark')t='light';
   applyTheme(t);render();load();
 })();
 </script>
