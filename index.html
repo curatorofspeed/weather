@@ -275,7 +275,7 @@ const W_NEAR={gfs_hrrr:40,ncep_nbm_conus:30,ecmwf_ifs025:20,gfs_seamless:10};
 const W_FAR ={gfs_hrrr:0, ncep_nbm_conus:30,ecmwf_ifs025:42,gfs_seamless:28};
 const WET=0.01, LADDER=[0.25,0.5,1,1.5,2,3,4,5,6,7,8,9,10,12,15];
 
-const S={data:{},climo:{},track:{},errs:[],busy:false,ts:null,kalshi:true,kproxy:'mine',kBlocked:false};
+const S={data:{},climo:{},track:{},errs:[],busy:false,ts:null,kalshi:true,kproxy:'mine',kBlocked:false,kCool:0};
 let PAL={};
 function readPalette(){
   const cs=getComputedStyle(document.documentElement),g=n=>cs.getPropertyValue('--'+n).trim();
@@ -700,14 +700,28 @@ function todayExtreme(win,keys,nowKey,obsNow,obsBound,spread,dir){
 }
 /* Where in the window the extreme forms, and how much of the day's
    remaining swing can still change it. dir=+1 peak, dir=-1 trough. */
-function extremeProgress(win,keys,nowKey,obsBound,dir){
+function extremeProgress(win,keys,nowKey,obsBound,dir,off,obsKey){
   const present=keys.filter(k=>win[k]!=null);
   if(!present.length)return null;
   const better=(a,b)=>dir>0?a>b:a<b;
-  let wV=null,wK=null;
-  for(const k of present)if(wV==null||better(win[k].v,wV)){wV=win[k].v;wK=k}
+  /* same anchoring todayExtreme uses, or the two disagree about where the
+     extreme sits and the card contradicts its own lock badge */
+  const hAbs=k=>Date.UTC(+k.slice(0,4),+k.slice(5,7)-1,+k.slice(8,10),+k.slice(11,13))/36e5;
+  const n0=hAbs(nowKey), O=off||0;
+  const val=k=>win[k].v+(k>=nowKey?O*Math.max(0,1-Math.max(0,hAbs(k)-n0)/6):0);
+
   let rV=null,rK=null;
-  for(const k of present){if(k<nowKey)continue;if(rV==null||better(win[k].v,rV)){rV=win[k].v;rK=k}}
+  for(const k of present){if(k<nowKey)continue;const v=val(k);if(rV==null||better(v,rV)){rV=v;rK=k}}
+
+  let wV=null,wK=null;
+  if(obsBound!=null&&(rV==null||!better(rV,obsBound))){
+    wV=obsBound;wK=obsKey||null;              // the thermometer already set it
+  }else if(obsBound!=null){
+    wV=rV;wK=rK;                              // something ahead still beats it
+  }else{
+    wV=rV;wK=rK;
+    for(const k of present){if(k>=nowKey)continue;const v=win[k].v;if(wV==null||better(v,wV)){wV=v;wK=k}}
+  }
   const risk=(obsBound!=null&&rV!=null)?Math.max(0,dir>0?rV-obsBound:obsBound-rV):null;
   const iN=keys.indexOf(nowKey),iW=keys.indexOf(wK),iR=keys.indexOf(rK),L=keys.length-1;
   return{v:wV,hr:wK?+wK.slice(11,13):null,passed:wK!=null&&wK<nowKey,
@@ -876,9 +890,15 @@ function derive(c,d){
   const hi=todayExtreme(win,cKeys,nowKey,obsNow,obsMax,spread,+1);
   const lo=todayExtreme(win,cKeys,nowKey,obsNow,obsMin,spread,-1);
   const drop=frontalDrop(win,cKeys,nowKey,obsMin);
+  const keyAt=(arr,val)=>{let b=null,bd=Infinity;
+    arr.forEach(o=>{const dd=Math.abs(o.temp-val);
+      if(dd<bd-1e-9){bd=dd;b=hourKeyTz(new Date(o.t),tz)}});
+    return b;};
+  const obsMaxK=obsMax!=null?keyAt(inWin,obsMax):null;
+  const obsMinK=obsMin!=null?keyAt(inWin,obsMin):null;
   const rain=rainToday(d.wet,cKeys,nowKey);
-  const progHi=extremeProgress(win,cKeys,nowKey,obsMax,+1);
-  const progLo=extremeProgress(win,cKeys,nowKey,obsMin,-1);
+  const progHi=extremeProgress(win,cKeys,nowKey,obsMax,+1,hi?hi.off:0,obsMaxK);
+  const progLo=extremeProgress(win,cKeys,nowKey,obsMin,-1,lo?lo.off:0,obsMinK);
 
   /* does the calendar-day answer differ from the climate-day answer? */
   let seam=null;
@@ -1023,6 +1043,7 @@ async function load(){
   if(S.kalshi)loadKalshi();
 }
 async function loadKalshi(){
+  if(S.kCool&&Date.now()<S.kCool)return;      // still in rate-limit cooldown
   S.kBlocked=false;
   const list=CITIES.filter(c=>S.data[c.id]&&S.data[c.id].dx).sort((a,b)=>{
     const L=c=>{const dx=S.data[c.id].dx;return (dx.hi&&dx.hi.locked?1:0)+(dx.lo&&dx.lo.locked?1:0)};
@@ -1064,8 +1085,8 @@ async function loadKalshi(){
       }catch(e){
         kFails++;
         if(/rate|429|too many/i.test(e.message||'')){
-          S.kBlocked=true;
-          S.errs.push('Kalshi is rate limiting. Redeploy the worker with the /batch route and this drops to one request per refresh.');
+          S.kBlocked=true;S.kCool=Date.now()+5*60000;
+          S.errs.push('Kalshi is rate limiting. Redeploy the worker so it serves /batch — that turns 40 requests into one. Pausing 5 min.');
           render();return;
         }
       }
@@ -1369,7 +1390,7 @@ function renderTicker(){
 function render(){
   readPalette();
   document.getElementById('errs').innerHTML=S.errs.length
-    ?`<div class="err">${S.errs.slice(0,3).map(esc).join('<br>')}${
+    ?`<div class="err">${[...new Set(S.errs)].slice(0,3).map(esc).join('<br>')}${
       S.errs.some(e=>/Failed to fetch|NetworkError|Load failed/i.test(e))
       ?'<br><br>A blocked request means the browser refused a cross-origin call. Serve this over http rather than opening the file directly.':''}</div>`:'';
   const fc=document.getElementById('fCity').value;
@@ -1462,7 +1483,8 @@ async function setKalshi(v){
   }else if(v==='off'){S.kalshi=false;S.kproxy=''}
   else{S.kalshi=true;S.kproxy=v}
   await store.set('kcfg2',{on:S.kalshi,proxy:S.kproxy});
-  Object.keys(memCache).forEach(k=>{if(k[0]==='k'&&k[1]==='|')delete memCache[k]});
+  S.kCool=0;
+  Object.keys(memCache).forEach(k=>{if(k.startsWith('k|')||k==='kbatch')delete memCache[k]});
   CITIES.forEach(c=>{if(S.data[c.id]){S.data[c.id].kHi=null;S.data[c.id].kLo=null}});
   S.errs=S.errs.filter(e=>!/Kalshi/.test(e));
   render();
