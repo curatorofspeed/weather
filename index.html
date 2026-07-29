@@ -686,8 +686,11 @@ function todayExtreme(win,keys,nowKey,obsNow,obsBound,spread,dir){
   if(obsBound!=null){
     const boundWins=(best==null)||(dir>0?obsBound>=best:obsBound<=best);
     if(boundWins){mu=obsBound;peakKey=null}
-    /* locked only when nothing left in the window can beat the bound */
-    locked = best==null || (dir>0 ? best<=obsBound+0.5 : best>=obsBound-0.5);
+    /* Locked means the thermometer has already set it. If anything left in
+       the window still beats the observation, it is not locked -- no slack,
+       or the badge ends up pointing at an hour that has not happened. */
+    locked = boundWins;
+    if(locked){mu=obsBound;peakKey=null}
   }
   if(mu==null)return null;
   const remFrac=clamp(rem.length/Math.max(present.length,1),0,1);
@@ -1204,14 +1207,14 @@ function progCol(p,ext,dir){
   let cls='',txt;
   if(locked){cls='done';
     txt=`<b>${word} ${hh(p.hr)}</b> · nothing ${dir>0?'warmer':'colder'} in the last ${p.hoursLeft}h of window`}
-  else if(p.risk!=null&&p.risk>=0.5){cls='risk';
+  else if(p.risk!=null&&p.risk>=0.25){cls='risk';
     txt=`<b>${word} ${hh(p.remHr)}</b> · ${p.risk.toFixed(1)}° ${dir>0?'upside':'downside'} left`}
   else if(!p.passed)txt=`<b>${word} due ${hh(p.hr)}</b> · ${p.hoursLeft}h of window left`;
   else txt=`<b>${word} ${hh(p.hr)}</b> · ${p.hoursLeft}h left, none of it colder`;
-  if(!locked&&dir<0&&p.risk!=null&&p.risk<0.5&&p.passed)
+  if(!locked&&dir<0&&p.risk!=null&&p.risk<0.25&&p.passed)
     txt=`<b>${word} ${hh(p.hr)}</b> · ${p.hoursLeft}h left, nothing colder due`;
   const mark=p.wFrac==null?'':`<u style="left:calc(${(p.wFrac*100).toFixed(1)}% - 1px)"></u>`;
-  const risky=(!locked&&p.risk!=null&&p.risk>=0.5&&p.rFrac!=null)
+  const risky=(!locked&&p.risk!=null&&p.risk>=0.25&&p.rFrac!=null)
     ?`<u style="left:calc(${(p.rFrac*100).toFixed(1)}% - 1px);background:var(--gold);height:9px;top:-3px"></u>`:'';
   return`<div class="${cls}">${txt}
     <span class="track"><i style="width:${((p.frac||0)*100).toFixed(1)}%"></i>${mark}${risky}</span></div>`;
