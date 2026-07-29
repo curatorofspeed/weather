@@ -207,7 +207,16 @@ main{padding:14px 12px 40px;max-width:640px;margin:0 auto}
       <option value="rain">Wettest first</option>
       <option value="az">A–Z</option>
     </select>
-    <button class="refresh" id="kb" aria-pressed="true">Kalshi on</button>
+    <select class="refresh" id="kb" aria-label="Kalshi data source">
+      <option value="off">Kalshi off</option>
+      <option value="mine" selected>Kalshi via my worker</option>
+      <option value="">Kalshi direct</option>
+      <option value="local">Kalshi via bundled relay</option>
+      <option value="allorigins">Kalshi via allorigins</option>
+      <option value="corsproxy">Kalshi via corsproxy</option>
+      <option value="codetabs">Kalshi via codetabs</option>
+      <option value="custom">Kalshi via my proxy…</option>
+    </select>
     <button class="refresh" id="th" aria-label="Toggle light or dark theme">☀</button>
     <button class="refresh" id="rf">Refresh</button>
     <div class="when" id="when">—</div>
@@ -266,7 +275,7 @@ const W_NEAR={gfs_hrrr:40,ncep_nbm_conus:30,ecmwf_ifs025:20,gfs_seamless:10};
 const W_FAR ={gfs_hrrr:0, ncep_nbm_conus:30,ecmwf_ifs025:42,gfs_seamless:28};
 const WET=0.01, LADDER=[0.25,0.5,1,1.5,2,3,4,5,6,7,8,9,10,12,15];
 
-const S={data:{},climo:{},track:{},errs:[],busy:false,ts:null,kalshi:true};
+const S={data:{},climo:{},track:{},errs:[],busy:false,ts:null,kalshi:true,kproxy:'mine',kBlocked:false};
 let PAL={};
 function readPalette(){
   const cs=getComputedStyle(document.documentElement),g=n=>cs.getPropertyValue('--'+n).trim();
@@ -482,6 +491,23 @@ async function obs(c){
 const KBASES=['https://api.elections.kalshi.com/trade-api/v2',
               'https://external-api.kalshi.com/trade-api/v2'];
 let KBASE=0, kFails=0;
+const PROXIES={
+  mine      :'https://kalshi-relay.drew-larrigan.workers.dev/?url={url}',
+  local     :'/relay?url={url}',
+  allorigins:'https://api.allorigins.win/raw?url={url}',
+  corsproxy :'https://corsproxy.io/?url={url}',
+  codetabs  :'https://api.codetabs.com/v1/proxy?quest={url}'
+};
+/* Kalshi serves no CORS headers, so a browser cannot call it directly.
+   Anything here is a plain relay for public market data — no auth, no
+   account, nothing to leak. A self-hosted worker is the sane end state. */
+function kUrl(path){
+  const raw=KBASES[KBASE]+path;
+  const p=(S.kproxy||'').trim();
+  if(!p)return raw;
+  const t=PROXIES[p]||p;
+  return t.includes('{url}')?t.replace('{url}',encodeURIComponent(raw)):t+encodeURIComponent(raw);
+}
 const SER=(c,dir)=>(c.kt?(dir>0?'KXHIGHT':'KXLOWT'):(dir>0?'KXHIGH':'KXLOW'))+c.ks;
 
 function kUnits(m){
@@ -528,13 +554,29 @@ function evMatches(ev,date){
   const t=evTag(date),alt=t.replace(/([A-Z]{3})0/,'$1');
   return ev===t||ev===alt;
 }
+/* derive the batch endpoint from whatever proxy template is configured */
+function kBatchBase(){
+  const p=(S.kproxy||'').trim();
+  if(!p)return null;
+  const t=PROXIES[p]||p;
+  if(t.startsWith('/'))return '/batch';
+  try{return new URL(t).origin+'/batch'}catch(e){return null}
+}
+async function kFetchBatch(){
+  const base=kBatchBase();
+  if(!base)return null;
+  const want=[];
+  CITIES.forEach(c=>{want.push(SER(c,1),SER(c,-1))});
+  const d=await jget(`${base}?series=${want.join(',')}`,2);
+  if(!d||!d.data)throw new Error('unexpected batch reply');
+  return d;
+}
 async function kFetchSeries(c,dir){
   const ser=SER(c,dir);
   for(let a=0;a<KBASES.length;a++){
-    const base=KBASES[(KBASE+a)%KBASES.length];
     try{
-      const d=await jget(`${base}/markets?series_ticker=${ser}&status=open&limit=400`,2);
       KBASE=(KBASE+a)%KBASES.length;
+      const d=await jget(kUrl(`/markets?series_ticker=${ser}&status=open&limit=400`),2);
       return d.markets||[];
     }catch(e){ if(a===KBASES.length-1)throw e }
   }
@@ -981,7 +1023,34 @@ async function load(){
   if(S.kalshi)loadKalshi();
 }
 async function loadKalshi(){
-  const list=CITIES.filter(c=>S.data[c.id]&&S.data[c.id].dx);
+  S.kBlocked=false;
+  const list=CITIES.filter(c=>S.data[c.id]&&S.data[c.id].dx).sort((a,b)=>{
+    const L=c=>{const dx=S.data[c.id].dx;return (dx.hi&&dx.hi.locked?1:0)+(dx.lo&&dx.lo.locked?1:0)};
+    return L(b)-L(a);
+  });
+  if(!list.length)return;
+
+  /* one round trip for the whole board — the relay paces and caches it */
+  try{
+    const b=await cachedMem('kbatch',60000,kFetchBatch);
+    if(b&&b.data){
+      let got=0;
+      for(const c of list){
+        const d=S.data[c.id];
+        const hi=b.data[SER(c,1)], lo=b.data[SER(c,-1)];
+        if(hi){d.kHi=kBuild(c,d.dx,hi,1);if(d.kHi){got++;if(d.kHi.close)d.dx.kClose=d.kHi.close}}
+        if(lo){d.kLo=kBuild(c,d.dx,lo,-1);if(d.kLo)got++}
+      }
+      const miss=b.errors?Object.keys(b.errors).length:0;
+      if(got){
+        if(miss)S.errs.push(`Kalshi: ${miss} series unavailable this round; the rest loaded.`);
+        render();return;
+      }
+    }
+  }catch(e){ /* relay has no /batch, or it failed — fall through */ }
+
+  /* fallback: one request per series, paced well under the exchange limit */
+  const gap=S.kproxy?520:180;
   let okCount=0,tried=0;
   for(const c of list){
     const d=S.data[c.id];
@@ -992,12 +1061,21 @@ async function loadKalshi(){
         const built=kBuild(c,d.dx,mk,dir);
         if(dir>0)d.kHi=built; else d.kLo=built;
         if(built){okCount++;if(built.close)d.dx.kClose=built.close}
-      }catch(e){ kFails++ }
-      await sleep(140);
+      }catch(e){
+        kFails++;
+        if(/rate|429|too many/i.test(e.message||'')){
+          S.kBlocked=true;
+          S.errs.push('Kalshi is rate limiting. Redeploy the worker with the /batch route and this drops to one request per refresh.');
+          render();return;
+        }
+      }
+      await sleep(gap);
     }
-    if(tried>=6&&okCount===0){                    // blocked outright — stop asking
-      S.kalshi=false;
-      S.errs.push('Kalshi book unavailable from the browser — the exchange is refusing cross-origin requests. Weather is unaffected.');
+    if(tried>=6&&okCount===0){
+      S.kBlocked=true;
+      S.errs.push(S.kproxy
+        ? 'Kalshi unreachable through the relay. Check the worker URL, or switch source in the menu. Weather is unaffected.'
+        : 'Kalshi serves no CORS headers, so the browser blocks it. Pick a relay from the Kalshi menu. Weather is unaffected.');
       render();return;
     }
     render();
@@ -1375,13 +1453,22 @@ document.getElementById('th').onclick=async()=>{
 document.getElementById('rf').onclick=load;
 CITIES.forEach(c=>{const o=document.createElement('option');o.value=c.id;o.textContent=c.city;
   document.getElementById('fCity').appendChild(o)});
-document.getElementById('kb').onclick=()=>{
-  S.kalshi=!S.kalshi;
-  const b=document.getElementById('kb');
-  b.textContent=S.kalshi?'Kalshi on':'Kalshi off';
-  b.setAttribute('aria-pressed',String(S.kalshi));
-  if(S.kalshi)loadKalshi(); else{CITIES.forEach(c=>{if(S.data[c.id]){S.data[c.id].kHi=null;S.data[c.id].kLo=null}});render()}
-};
+async function setKalshi(v){
+  if(v==='custom'){
+    const cur=PROXIES[S.kproxy]?'':S.kproxy;
+    const url=prompt('Proxy URL. Use {url} where the encoded Kalshi URL goes.\n\nExample:\nhttps://wx.example.workers.dev/?url={url}',cur||'');
+    if(!url){document.getElementById('kb').value=S.kalshi?(S.kproxy||''):'off';return}
+    S.kalshi=true;S.kproxy=url.trim();
+  }else if(v==='off'){S.kalshi=false;S.kproxy=''}
+  else{S.kalshi=true;S.kproxy=v}
+  await store.set('kcfg2',{on:S.kalshi,proxy:S.kproxy});
+  Object.keys(memCache).forEach(k=>{if(k[0]==='k'&&k[1]==='|')delete memCache[k]});
+  CITIES.forEach(c=>{if(S.data[c.id]){S.data[c.id].kHi=null;S.data[c.id].kLo=null}});
+  S.errs=S.errs.filter(e=>!/Kalshi/.test(e));
+  render();
+  if(S.kalshi)loadKalshi();
+}
+document.getElementById('kb').onchange=e=>setKalshi(e.target.value);
 document.getElementById('tick').addEventListener('click',e=>{
   const b=e.target.closest('[data-city]');if(!b)return;
   const f=document.getElementById('fCity');
@@ -1391,6 +1478,10 @@ document.getElementById('tick').addEventListener('click',e=>{
 document.getElementById('fCity').onchange=render;
 document.getElementById('fState').onchange=render;
 (async()=>{
+  const kc=await store.get('kcfg2');
+  if(kc){S.kalshi=!!kc.on;S.kproxy=kc.proxy||''}
+  const kb=document.getElementById('kb');
+  kb.value=S.kalshi?(PROXIES[S.kproxy]?S.kproxy:(S.kproxy?'custom':'')):'off';
   let t=await store.get('theme');
   if(t!=='light'&&t!=='dark')
     t=(window.matchMedia&&window.matchMedia('(prefers-color-scheme: light)').matches)?'light':'dark';
