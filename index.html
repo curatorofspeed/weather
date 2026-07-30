@@ -482,20 +482,27 @@ function obsRow(p){
     dew:p.dewpoint&&p.dewpoint.value!=null?p.dewpoint.value*9/5+32:null,
     sky:(p.cloudLayers||[]).map(l=>l.amount).join('/')||'CLR'};
 }
+let QC='&require_qc=false';          // dropped automatically if rejected
+async function obsGet(url){
+  try{ return await jget(url+QC) }
+  catch(e){
+    /* a 400 here means the parameter is not supported on this endpoint —
+       stop sending it rather than breaking every station */
+    if(QC&&/\b400\b/.test(e.message||'')){ QC=''; return jget(url) }
+    throw e;
+  }
+}
 async function obs(c){
   const since=new Date(Date.now()-54*36e5).toISOString().replace(/\.\d+Z$/,'Z');
-  /* require_qc=false: quality control runs behind transmission, and the
-     newest cycle can sit withheld while it is pending */
-  const d=await jget(`https://api.weather.gov/stations/${c.id}/observations?start=${since}&limit=260&require_qc=false`);
+  const base=`https://api.weather.gov/stations/${c.id}/observations`;
+  const d=await obsGet(`${base}?start=${since}&limit=260`);
   let rows=(d.features||[]).map(f=>obsRow(f.properties))
     .filter(r=>r&&r.temp!=null).sort((a,b)=>new Date(a.t)-new Date(b.t));
-  /* chase /latest only when the range query looks behind, so healthy
-     stations cost nothing extra */
+  /* chase /latest only for a station that looks behind */
   const newest=rows.length?new Date(rows[rows.length-1].t).getTime():0;
   if(Date.now()-newest>45*60000){
     try{
-      const j=await jget(`https://api.weather.gov/stations/${c.id}/observations/latest?require_qc=false`);
-      const L=obsRow(j&&j.properties);
+      const L=obsRow((await obsGet(`${base}/latest`)||{}).properties);
       if(L&&L.temp!=null&&new Date(L.t).getTime()>newest)rows.push(L);
     }catch(e){}
   }
@@ -1093,11 +1100,12 @@ async function load(force){
     {mod:temps[c.id]||null,wet:wets[c.id]||null,obs:(S.data[c.id]||{}).obs||[]})});
   render();
   /* per-station calls are unavoidable — throttle them rather than burst */
+  const obsFail=[];
   for(let i=0;i<CITIES.length;i+=4){
     await Promise.allSettled(CITIES.slice(i,i+4).map(async c=>{
       const d=S.data[c.id];
       try{d.obs=await cachedMem('o|'+c.id,7*60000,()=>obs(c))}
-      catch(e){if(S.errs.length<4)S.errs.push(`${c.city} observations: ${e.message}`)}
+      catch(e){obsFail.push(`${c.city} ${e.message}`)}
       d.dx=derive(c,d);
       if(d.dx){
         const yday=prevDay(d.dx.today);
@@ -1108,6 +1116,10 @@ async function load(force){
     }));
     await sleep(180);render();
   }
+  if(obsFail.length)S.errs.push(
+    `Observations unavailable for ${obsFail.length} of ${CITIES.length} stations `
+    +`(${obsFail.slice(0,3).join(', ')}${obsFail.length>3?', …':''}). `
+    +`Those cards fall back to model estimates.`);
   S.ts=new Date();S.busy=false;render();
   if(S.kalshi)loadKalshi();
 }
