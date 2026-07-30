@@ -475,15 +475,44 @@ async function fetchClimoBatched(){
   return out;
 }
 
+function obsRow(p){
+  if(!p)return null;
+  return{t:p.timestamp,
+    temp:p.temperature&&p.temperature.value!=null?p.temperature.value*9/5+32:null,
+    dew:p.dewpoint&&p.dewpoint.value!=null?p.dewpoint.value*9/5+32:null,
+    sky:(p.cloudLayers||[]).map(l=>l.amount).join('/')||'CLR'};
+}
 async function obs(c){
   const since=new Date(Date.now()-54*36e5).toISOString().replace(/\.\d+Z$/,'Z');
-  const d=await jget(`https://api.weather.gov/stations/${c.id}/observations?start=${since}&limit=260`);
-  return (d.features||[]).map(f=>{const p=f.properties||{};
-    return{t:p.timestamp,
-      temp:p.temperature&&p.temperature.value!=null?p.temperature.value*9/5+32:null,
-      dew:p.dewpoint&&p.dewpoint.value!=null?p.dewpoint.value*9/5+32:null,
-      sky:(p.cloudLayers||[]).map(l=>l.amount).join('/')||'CLR'}})
-    .filter(r=>r.temp!=null).sort((a,b)=>new Date(a.t)-new Date(b.t));
+  /* require_qc=false: quality control runs behind transmission, and the
+     newest cycle can sit withheld while it is pending */
+  const d=await jget(`https://api.weather.gov/stations/${c.id}/observations?start=${since}&limit=260&require_qc=false`);
+  let rows=(d.features||[]).map(f=>obsRow(f.properties))
+    .filter(r=>r&&r.temp!=null).sort((a,b)=>new Date(a.t)-new Date(b.t));
+  /* chase /latest only when the range query looks behind, so healthy
+     stations cost nothing extra */
+  const newest=rows.length?new Date(rows[rows.length-1].t).getTime():0;
+  if(Date.now()-newest>45*60000){
+    try{
+      const j=await jget(`https://api.weather.gov/stations/${c.id}/observations/latest?require_qc=false`);
+      const L=obsRow(j&&j.properties);
+      if(L&&L.temp!=null&&new Date(L.t).getTime()>newest)rows.push(L);
+    }catch(e){}
+  }
+  return rows;
+}
+/* ASOS transmits once an hour at a station-specific minute. Learn it, so
+   "old" can be distinguished from "overdue". */
+function obsCadence(O){
+  if(!O||O.length<4)return null;
+  const tail=O.slice(-14),tally={};
+  tail.forEach(o=>{const m=new Date(o.t).getUTCMinutes();tally[m]=(tally[m]||0)+1});
+  const minute=+Object.keys(tally).sort((a,b)=>tally[b]-tally[a]||a-b)[0];
+  const gaps=[];
+  for(let i=1;i<tail.length;i++)gaps.push((new Date(tail[i].t)-new Date(tail[i-1].t))/60000);
+  gaps.sort((a,b)=>a-b);
+  const gap=clamp(gaps.length?gaps[Math.floor(gaps.length/2)]:60,5,120);
+  return{minute,gap,next:new Date(O[O.length-1].t).getTime()+gap*60000};
 }
 /* ══ live Kalshi book ═══════════════════════════════════════════════
    Public market data only — no auth, no orders. Prices are read
@@ -899,7 +928,9 @@ function derive(c,d){
   const obsNow=last?last.temp:null;
   /* how old is the station report, and which way is it going */
   const obsAge=last?(Date.now()-new Date(last.t))/60000:null;   // minutes
-  const stale=obsAge!=null&&obsAge>95;                           // ASOS reports hourly
+  const cad=obsCadence(O);
+  /* overdue is relative to this station's own cadence, not a fixed number */
+  const stale=obsAge!=null&&obsAge>((cad?cad.gap:60)+20);
   let trend=null;
   if(O.length>=2){
     const tail=O.slice(-4);
@@ -955,7 +986,7 @@ function derive(c,d){
   }).filter(x=>x.hi&&x.lo);
 
   return{today,nowHr,nowKey,dst,win,cKeys,hi,lo,drop,seam,future,bias,progHi,progLo,rain,bandHi,bandLo,
-    obsMax,obsMin,obsNow,nowTemp,nowSrc,obsAge,stale,trend,last,inWin,spread};
+    obsMax,obsMin,obsNow,nowTemp,nowSrc,obsAge,stale,trend,cad,last,inWin,spread};
 }
 
 /* ── rain (unchanged) ────────────────────────────────────────────── */
@@ -1050,8 +1081,12 @@ function monthOutlook(c,W,CL,today,cli){
 }
 
 /* ── load ────────────────────────────────────────────────────────── */
-async function load(){
-  if(S.busy)return;S.busy=true;S.errs=[];S.tzWarn=null;render();
+async function load(force){
+  if(S.busy)return;S.busy=true;S.errs=[];S.tzWarn=null;
+  /* the button has to mean it — otherwise a manual refresh inside the
+     cache window silently does nothing */
+  if(force===true){Object.keys(memCache).forEach(k=>delete memCache[k]);S.kCool=0}
+  render();
   const[temps,wets,climos]=[await fetchTempsBatched(),await fetchWetBatched(),await fetchClimoBatched()];
   S.climo=climos;
   CITIES.forEach(c=>{S.data[c.id]=Object.assign(S.data[c.id]||{},
@@ -1344,8 +1379,10 @@ function nowLine(c,dx){
   if(dx.nowSrc==='model')meta=`<i class="stale">station silent — model estimate</i>`;
   else{
     const clock=new Date(dx.last.t).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit',timeZone:c.tz});
+    const due=dx.cad?new Date(dx.cad.next).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit',timeZone:c.tz}):null;
     meta=`<i class="${dx.stale?'stale':''}">${esc(c.site.split('—')[0].trim())} · ${clock} local`
-        +`${age!=null?` · ${age<1?'just now':age+' min ago'}`:''}</i>`;
+        +`${age!=null?` · ${age<1?'just now':age+' min ago'}`:''}`
+        +`${dx.stale&&due?` · next due ${due}`:''}</i>`;
   }
   return`<div class="nowline"><u>Now</u><b>${Math.round(dx.nowTemp)}°</b>
     ${trendTxt?`<span class="tr">${trendTxt}</span>`:''}${meta}</div>`;
@@ -1520,7 +1557,7 @@ document.getElementById('th').onclick=async()=>{
   const t=document.documentElement.dataset.theme==='light'?'dark':'light';
   applyTheme(t);await store.set('theme',t);render();
 };
-document.getElementById('rf').onclick=load;
+document.getElementById('rf').onclick=()=>load(true);
 CITIES.forEach(c=>{const o=document.createElement('option');o.value=c.id;o.textContent=c.city;
   document.getElementById('fCity').appendChild(o)});
 async function setKalshi(v){
