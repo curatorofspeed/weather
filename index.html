@@ -162,6 +162,19 @@ main{padding:14px 12px 40px;max-width:640px;margin:0 auto}
 .prog .track i{display:block;height:100%;border-radius:2px;background:var(--haze);opacity:.45}
 .prog .track u{position:absolute;top:-2px;width:2px;height:7px;background:var(--vapor);border-radius:1px}
 .prog .typ{display:block;margin-top:4px;font-size:10px;color:var(--dim);letter-spacing:.02em}
+.axleg{display:flex;gap:12px;flex-wrap:wrap;font-family:var(--mono);font-size:9.5px;color:var(--dim);margin-top:5px}
+.axleg span{display:flex;align-items:center;gap:4px}
+.axleg i{width:12px;height:2px;border-radius:1px;display:inline-block}
+.axleg i.env{height:7px;border-radius:2px;background:var(--pulse);opacity:.2}
+.axleg i.dew{height:0;border-top:1px dashed var(--gold);opacity:.8}
+.axleg i.pk{height:7px;border-radius:2px;background:var(--ember);opacity:.16}
+.day .rail{display:block;position:relative;height:34px;width:3px;margin:5px auto;border-radius:2px;background:var(--rule)}
+.day .rail i{position:absolute;left:0;right:0;border-radius:2px;background:var(--haze);opacity:.5}
+.day .rail.tight i{background:var(--gain);opacity:.65}
+.day .rail.mid i{background:var(--gold);opacity:.6}
+.day .rail.wide i{background:var(--ember);opacity:.6}
+.day .lo{color:var(--cool)}
+.day .unc{display:block;font-style:normal;font-size:9px;color:var(--dim);margin-top:2px}
 .axcap{display:flex;justify-content:space-between;font-family:var(--mono);font-size:9.5px;color:var(--dim);
   margin-top:2px;letter-spacing:.03em}
 .axcap .mid{color:var(--haze);letter-spacing:.09em;text-transform:uppercase}
@@ -692,7 +705,8 @@ function blendAt(cs,key,wset){
   const vals=[];let n=0,d=0;
   for(const m in cs){const v=cs[m][key];if(v==null)continue;vals.push(v);const w=wset[m]||0;n+=v*w;d+=w}
   if(!vals.length)return null;
-  return{v:d?n/d:mean(vals),spread:vals.length>1?(sd(vals)||0.9):1.2,n:vals.length};
+  return{v:d?n/d:mean(vals),spread:vals.length>1?(sd(vals)||0.9):1.2,n:vals.length,
+    lo:Math.min(...vals),hi:Math.max(...vals)};
 }
 function blendWindow(cs,keys,wset){
   const out={};
@@ -965,6 +979,14 @@ function derive(c,d){
     return b;};
   const obsMaxK=obsMax!=null?keyAt(inWin,obsMax):null;
   const obsMinK=obsMin!=null?keyAt(inWin,obsMin):null;
+  /* dew point is the practical floor on the overnight low — worth seeing */
+  const dewLine=(()=>{
+    const out=[];
+    inWin.forEach(o=>{if(o.dew==null)return;
+      const i=cKeys.indexOf(hourKeyTz(new Date(o.t),tz));
+      if(i>=0)out.push({i,v:o.dew})});
+    return out.sort((a,b)=>a.i-b.i);
+  })();
   const rain=rainToday(d.wet,cKeys,nowKey);
   const allDates=[...new Set(Object.values(d.mod).flatMap(m=>m.t.map(x=>x.slice(0,10))))].sort();
   const bandHi=hourBand(extremeHours(cs,W_NEAR,tz,allDates,+1));
@@ -992,7 +1014,7 @@ function derive(c,d){
     return{dt,hi:futureExtreme(cs,ks,w,+1),lo:futureExtreme(cs,ks,w,-1)};
   }).filter(x=>x.hi&&x.lo);
 
-  return{today,nowHr,nowKey,dst,win,cKeys,hi,lo,drop,seam,future,bias,progHi,progLo,rain,bandHi,bandLo,
+  return{today,nowHr,nowKey,dst,win,cKeys,hi,lo,drop,seam,future,bias,progHi,progLo,rain,bandHi,bandLo,dewLine,
     obsMax,obsMin,obsNow,nowTemp,nowSrc,obsAge,stale,trend,cad,last,inWin,spread};
 }
 
@@ -1144,10 +1166,7 @@ async function loadKalshi(){
         if(lo){d.kLo=kBuild(c,d.dx,lo,-1);if(d.kLo)got++}
       }
       const miss=b.errors?Object.keys(b.errors).length:0;
-      if(got){
-        if(miss)S.errs.push(`Kalshi: ${miss} series unavailable this round; the rest loaded.`);
-        render();return;
-      }
+      if(got){render();return}
     }
   }catch(e){ /* relay has no /batch, or it failed — fall through */ }
 
@@ -1166,20 +1185,12 @@ async function loadKalshi(){
       }catch(e){
         kFails++;
         if(/rate|429|too many/i.test(e.message||'')){
-          S.kBlocked=true;S.kCool=Date.now()+5*60000;
-          S.errs.push('Kalshi is rate limiting. Redeploy the worker so it serves /batch — that turns 40 requests into one. Pausing 5 min.');
-          render();return;
+          S.kBlocked=true;S.kCool=Date.now()+5*60000;render();return;
         }
       }
       await sleep(gap);
     }
-    if(tried>=6&&okCount===0){
-      S.kBlocked=true;
-      S.errs.push(S.kproxy
-        ? 'Kalshi unreachable through the relay. Check the worker URL, or switch source in the menu. Weather is unaffected.'
-        : 'Kalshi serves no CORS headers, so the browser blocks it. Pick a relay from the Kalshi menu. Weather is unaffected.');
-      render();return;
-    }
+    if(tried>=6&&okCount===0){S.kBlocked=true;render();return}
     render();
   }
 }
@@ -1231,9 +1242,19 @@ function curve(c,d){
       if(a<0||z<0||z<a)return'';
       return`<rect x="${X(a).toFixed(1)}" y="0" width="${Math.max(3,X(z+1)-X(a)).toFixed(1)}" height="${H-12}"
         fill="${PAL.ember}" opacity=".08"/>`})()}
+   ${(()=>{  /* model disagreement, hour by hour — the honest uncertainty */
+      const f=dx.cKeys.filter(k=>dx.win[k]&&dx.win[k].lo!=null&&dx.cKeys.indexOf(k)>=nowI);
+      if(f.length<3)return'';
+      const o=k=>{const i=idx(k);return nowI>=0&&i>=nowI?off*Math.max(0,1-(i-nowI)/6):0};
+      const up=f.map(k=>`${X(idx(k)).toFixed(1)},${Y(dx.win[k].hi+o(k)).toFixed(1)}`);
+      const dn=f.slice().reverse().map(k=>`${X(idx(k)).toFixed(1)},${Y(dx.win[k].lo+o(k)).toFixed(1)}`);
+      return`<polygon points="${up.concat(dn).join(' ')}" fill="${PAL.pulse}" opacity=".13"/>`})()}
    ${past.length>1?`<polyline fill="none" stroke="${PAL.pulse}" stroke-width="1.3" stroke-dasharray="2 4" opacity=".4" points="${line(past)}"/>`:''}
    ${fut.length>1?`<polyline fill="none" stroke="${PAL.pulse}" stroke-width="1.8" stroke-dasharray="4 3" points="${line(fut)}"/>`:''}
    ${op.length>1?`<polyline fill="none" stroke="${PAL.obs}" stroke-width="2" points="${line(op)}"/>`:''}
+   ${(()=>{const dp=dx.dewLine;if(!dp||dp.length<4)return'';
+      const pts=dp.filter(p=>p.v>=y0-1).map(p=>`${X(p.i).toFixed(1)},${Y(p.v).toFixed(1)}`);
+      return pts.length<4?'':`<polyline fill="none" stroke="${PAL.gold}" stroke-width="1" stroke-dasharray="1 3" opacity=".55" points="${pts.join(' ')}"/>`})()}
    ${lab.map(p=>`<text x="${X(p.i).toFixed(1)}" y="${(Y(p.v)-6).toFixed(1)}" fill="${PAL.haze}" font-size="9"
      font-family="monospace" text-anchor="middle">${Math.round(p.v)}°</text>
      <text x="${X(p.i).toFixed(1)}" y="${H-1}" fill="${PAL.dim}" font-size="8.5" font-family="monospace" text-anchor="middle">${p.h}h</text>`).join('')}
@@ -1243,6 +1264,13 @@ function curve(c,d){
     <line x1="${X(iTrade).toFixed(1)}" y1="0" x2="${X(iTrade).toFixed(1)}" y2="${H-12}" stroke="${PAL.gold}" stroke-width="1"/>`:''}
    ${nowI>=0?`<line x1="${X(nowI).toFixed(1)}" y1="0" x2="${X(nowI).toFixed(1)}" y2="${H-12}" stroke="${PAL.dim}" stroke-dasharray="2 4"/>`:''}
   </svg>
+  <div class="axleg">
+    <span><i style="background:${PAL.obs}"></i>observed</span>
+    <span><i style="background:${PAL.pulse}"></i>forecast</span>
+    <span><i class="env"></i>model range</span>
+    ${dx.dewLine&&dx.dewLine.length>3?`<span><i class="dew"></i>dew point</span>`:''}
+    ${dx.bandHi?`<span><i class="pk"></i>usual peak</span>`:''}
+  </div>
   <div class="axcap"><span>${dx.dst?'1:00 AM':'midnight'}</span>
     <span class="mid">climate window &middot; ${dx.cKeys.length}h</span>
     <span>${dx.dst?'1:00 AM next day':'midnight next day'}</span></div>
@@ -1450,8 +1478,18 @@ function card(c){
     ${progressRow(dx)}
     ${bookBlock(d,+1)}${bookBlock(d,-1)}
     ${chk}${warn}
-    <div class="days">${dx.future.map(x=>`<div class="day"><u>${dow(x.dt)}</u>
-      <b>${Math.round(x.hi.mu)}°</b><i>${Math.round(x.lo.mu)}°</i></div>`).join('')}</div>
+    <div class="days">${(()=>{
+      const all=dx.future.flatMap(x=>[x.hi.mu,x.lo.mu]);
+      const lo=Math.min(...all)-2,hi=Math.max(...all)+2,R=(hi-lo)||1;
+      return dx.future.map(x=>{
+        const top=(1-(x.hi.mu-lo)/R)*100, bot=(1-(x.lo.mu-lo)/R)*100;
+        const unc=(x.hi.spread+x.lo.spread)/2;
+        const cls=unc>=3?'wide':unc>=1.6?'mid':'tight';
+        return`<div class="day"><u>${dow(x.dt)}</u>
+          <b>${Math.round(x.hi.mu)}°</b>
+          <span class="rail ${cls}"><i style="top:${top.toFixed(1)}%;bottom:${(100-bot).toFixed(1)}%"></i></span>
+          <i class="lo">${Math.round(x.lo.mu)}°</i>
+          <em class="unc">±${unc.toFixed(1)}</em></div>`}).join('')})()}</div>
     ${wetBlock(c,d)}
   </div>`;
 }
@@ -1527,6 +1565,8 @@ function render(){
     ||`<div class="msg"><b>${fs==='settled'?'Nothing settled yet':fs==='play'?'Everything is settled':'Nothing loaded'}</b>${
       fs==='settled'?'Highs lock after the peak; lows lock once nothing colder is left in the window.':'Tap refresh.'}</div>`;
   renderTicker();
+  const kbEl=document.getElementById('kb');
+  if(kbEl)kbEl.style.opacity=(S.kalshi&&S.kBlocked)?'.5':'1';
   const rf=document.getElementById('rf');
   rf.disabled=S.busy;rf.textContent=S.busy?'Loading…':'Refresh';
   document.getElementById('when').innerHTML=S.ts
