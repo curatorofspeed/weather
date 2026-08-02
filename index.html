@@ -182,6 +182,7 @@ main{padding:14px 12px 40px;max-width:640px;margin:0 auto}
 .pb.up{border-color:rgba(61,214,140,.4);color:var(--gain)}
 .pb.dn{border-color:rgba(240,97,109,.4);color:var(--loss)}
 .tally.papersum b{color:var(--pulse)}
+.when .nxt{color:var(--dim);font-size:10px}
 .axcap{display:flex;justify-content:space-between;font-family:var(--mono);font-size:9.5px;color:var(--dim);
   margin-top:2px;letter-spacing:.03em}
 .axcap .mid{color:var(--haze);letter-spacing:.09em;text-transform:uppercase}
@@ -238,6 +239,7 @@ main{padding:14px 12px 40px;max-width:640px;margin:0 auto}
       <option value="codetabs">Kalshi via codetabs</option>
       <option value="custom">Kalshi via my proxy…</option>
     </select>
+    <button class="refresh" id="au" aria-pressed="true" title="Poll for locks automatically">Live ●</button>
     <button class="refresh" id="xp" title="Export the paper ledger as CSV">Ledger ↓</button>
     <button class="refresh" id="th" aria-label="Toggle light or dark theme">☀</button>
     <button class="refresh" id="rf">Refresh</button>
@@ -297,7 +299,7 @@ const W_NEAR={gfs_hrrr:40,ncep_nbm_conus:30,ecmwf_ifs025:20,gfs_seamless:10};
 const W_FAR ={gfs_hrrr:0, ncep_nbm_conus:30,ecmwf_ifs025:42,gfs_seamless:28};
 const WET=0.01, LADDER=[0.25,0.5,1,1.5,2,3,4,5,6,7,8,9,10,12,15];
 
-const S={data:{},climo:{},track:{},errs:[],busy:false,ts:null,kalshi:true,kproxy:'mine',kBlocked:false,kCool:0};
+const S={data:{},climo:{},track:{},errs:[],busy:false,ts:null,kalshi:true,kproxy:'mine',kBlocked:false,kCool:0,auto:true,awake:false,nextPoll:0};
 let PAL={};
 function readPalette(){
   const cs=getComputedStyle(document.documentElement),g=n=>cs.getPropertyValue('--'+n).trim();
@@ -1129,7 +1131,7 @@ function resolveTrack(arr,obsArr,tz,yday,dst){
       if(e.al==null){e.al=e.mLo;e.src=e.src||'obs'}
     }
   }
-  return arr.filter(x=>x.d>=daysAgo(21));
+  return arr.filter(x=>x.d>=daysAgo(45));   // must outlive a 30-day evaluation
 }
 /* Is the stated uncertainty honest? MAE says nothing about that. If the
    +/-1 sigma band is right, truth falls inside it ~68% of the time. Too
@@ -1174,7 +1176,7 @@ function calibration(arr){
    it instead of hedging with a vague caveat. */
 function reportGap(arr){
   const hi=[],lo=[];
-  arr.forEach(e=>{
+  (arr||[]).forEach(e=>{
     if(e.src!=='CLI')return;                      // only days the CLI settled
     if(e.a!=null&&e.mHi!=null)hi.push(e.a-e.mHi);
     if(e.al!=null&&e.mLo!=null)lo.push(e.al-e.mLo);
@@ -1192,7 +1194,7 @@ function reportGap(arr){
   return{hi:summarise(hi,+1),lo:summarise(lo,-1),n:hi.length+lo.length};
 }
 function trackStats(arr){
-  const done=arr.filter(x=>x.a!=null).sort((a,b)=>a.d<b.d?-1:1);
+  const done=arr.filter(x=>x.a!=null&&x.p!=null).sort((a,b)=>a.d<b.d?-1:1);
   if(!done.length)return null;
   const eh=done.map(x=>x.p-x.a);
   const lows=done.filter(x=>x.pl!=null&&x.al!=null);
@@ -1200,7 +1202,7 @@ function trackStats(arr){
   return{n:done.length,maeHi:mean(eh.map(Math.abs)),
     maeLo:el.length?mean(el.map(Math.abs)):null,nLo:el.length,
     within2:eh.filter(e=>Math.abs(e)<=2).length,last:done[done.length-1],
-    cal:calibration(done),gap:reportGap(done)};
+    cal:calibration(done),gap:reportGap(arr)};
 }
 async function updateTrack(c,tz,today,predHi,predLo,obsArr,dst,cli,d,sigHi,sigLo){
   const k='trk_'+c.id;
@@ -1211,6 +1213,21 @@ async function updateTrack(c,tz,today,predHi,predLo,obsArr,dst,cli,d,sigHi,sigLo
     if(cli.hi!=null){open.a=cli.hi;open.src='CLI'}
     if(cli.lo!=null){open.al=cli.lo;open.src='CLI'}
   }
+  /* Missing a day must not orphan its positions forever. Chase the report
+     for any past day still unsettled, oldest first, a few per load. */
+  const stale=arr.filter(x=>x.d<yday&&x.d>=daysAgo(20)&&(x.a==null||x.al==null))
+    .sort((a,b)=>a.d<b.d?-1:1).slice(0,3);
+  for(const e of stale){
+    const late=await cachedMem('cli|'+c.id+'|'+e.d,6*36e5,()=>fetchCli(c.id,e.d));
+    if(late){
+      if(late.hi!=null&&e.a==null){e.a=late.hi;e.src='CLI'}
+      if(late.lo!=null&&e.al==null){e.al=late.lo;e.src=e.src||'CLI'}
+    }
+    if(!e.tries)e.tries=0;
+    e.tries++;
+    if(e.tries>6&&e.a==null)e.dead=true;      // stop asking after a week of tries
+  }
+  arr=arr.filter(x=>!x.dead);
   arr=resolveTrack(arr,obsArr,tz,yday,dst);
 
   /* settle any open paper positions against the report */
@@ -1225,11 +1242,20 @@ async function updateTrack(c,tz,today,predHi,predLo,obsArr,dst,cli,d,sigHi,sigLo
   });
 
   let today_e=arr.find(x=>x.d===today);
-  if(predHi!=null&&hourIn(tz)<=12&&!today_e){
-    today_e={d:today,p:Math.round(predHi),pl:predLo!=null?Math.round(predLo):null,
-      mu:+predHi.toFixed(2),mul:predLo!=null?+predLo.toFixed(2):null,
-      s:sigHi!=null?+sigHi.toFixed(2):null,sl:sigLo!=null?+sigLo.toFixed(2):null};
+  if(!today_e&&predHi!=null){
+    today_e={d:today};
     arr.push(today_e);
+  }
+  /* the forecast-accuracy record wants a MORNING call specifically, so those
+     fields are stamped once, before noon. The entry itself exists all day so
+     an afternoon lock has somewhere to land. */
+  if(today_e&&predHi!=null&&today_e.p==null&&hourIn(tz)<=12){
+    today_e.p=Math.round(predHi);
+    today_e.pl=predLo!=null?Math.round(predLo):null;
+    today_e.mu=+predHi.toFixed(2);
+    today_e.mul=predLo!=null?+predLo.toFixed(2):null;
+    today_e.s=sigHi!=null?+sigHi.toFixed(2):null;
+    today_e.sl=sigLo!=null?+sigLo.toFixed(2):null;
   }
   /* one paper position per side per day, taken the first time an extreme
      locks and the book is quoting — never re-priced afterwards */
@@ -1497,7 +1523,7 @@ async function load(force){
     `Observations unavailable for ${obsFail.length} of ${CITIES.length} stations `
     +`(${obsFail.slice(0,3).join(', ')}${obsFail.length>3?', …':''}). `
     +`Those cards fall back to model estimates.`);
-  S.ts=new Date();S.busy=false;render();
+  S.ts=new Date();S.busy=false;scheduleNext();render();
   if(S.kalshi)loadKalshi();
 }
 async function loadKalshi(){
@@ -1976,8 +2002,14 @@ function render(){
   if(kbEl)kbEl.style.opacity=(S.kalshi&&S.kBlocked)?'.5':'1';
   const rf=document.getElementById('rf');
   rf.disabled=S.busy;rf.textContent=S.busy?'Loading…':'Refresh';
+  const openN=CITIES.reduce((a,c)=>{const dx=S.data[c.id]&&S.data[c.id].dx;
+    if(!dx)return a;return a+((dx.hi&&!dx.hi.locked)?1:0)+((dx.lo&&!dx.lo.locked)?1:0)},0);
+  const nxt=(S.auto&&S.nextPoll)?fmtLeft(S.nextPoll-Date.now()):null;
   document.getElementById('when').innerHTML=S.ts
-    ?`${S.ts.toLocaleDateString([],{weekday:'short',month:'short',day:'numeric'})}<br>${S.ts.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})}`:'—';
+    ?`${S.ts.toLocaleDateString([],{weekday:'short',month:'short',day:'numeric'})}<br>`
+     +`${S.ts.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})}`
+     +(S.auto?`<br><span class="nxt">${openN} live · next ${nxt||'now'}</span>`:'')
+    :'—';
   const rs=Object.values(S.data).map(d=>d.dx&&d.dx.bias&&d.dx.bias.rmse).filter(x=>x!=null);
   const locks=CITIES.map(c=>{const dx=S.data[c.id]&&S.data[c.id].dx;
     if(!dx||!dx.hi)return null;return (dx.hi.locked?1:0)+(dx.lo&&dx.lo.locked?1:0)}).filter(x=>x!=null);
@@ -2025,6 +2057,65 @@ function render(){
   document.getElementById('foot').textContent=S.ts
     ?'Highs and lows are computed over the NWS climate day — midnight to midnight local standard time, so 1am–1am under daylight saving, which means the midnight hour still belongs to the previous day. The observed max floors the high; the observed min caps the low. A low only locks when no remaining hour can undercut it. Yesterday is graded against the NWS Daily Climate Report.':'';
 }
+/* ── keep it live ──────────────────────────────────────────────────
+   A lock is decided by the station thermometer, and ASOS reports once an
+   hour at a fixed minute we already learn per station. So poll shortly
+   after the next expected report rather than on a blind timer — fewer
+   requests, and the lock is caught within a minute or two of becoming
+   true. iPad screens sleep and iOS suspends timers, so we also catch up
+   the moment the page becomes visible again. */
+function nextPollAt(){
+  const now=Date.now();
+  let soonest=null;
+  CITIES.forEach(c=>{
+    const dx=S.data[c.id]&&S.data[c.id].dx;
+    if(!dx||!dx.cad)return;
+    /* if either extreme is still open, this station can still lock */
+    const openHi=dx.hi&&!dx.hi.locked, openLo=dx.lo&&!dx.lo.locked;
+    if(!openHi&&!openLo)return;
+    let t=dx.cad.next+90000;                 // just after the report lands
+    while(t<now)t+=dx.cad.gap*60000;         // roll forward if we slept
+    if(soonest==null||t<soonest)soonest=t;
+  });
+  /* nothing open anywhere: idle pace, still enough to roll into a new day */
+  if(soonest==null)return now+20*60000;
+  return clamp(soonest,now+90000,now+15*60000);
+}
+function scheduleNext(){
+  S.nextPoll=nextPollAt();
+}
+async function autoTick(force){
+  if(!S.auto||S.busy)return;
+  const now=Date.now();
+  if(!force&&S.nextPoll&&now<S.nextPoll)return;
+  await load(false);                          // caches still apply; cheap
+  scheduleNext();
+}
+setInterval(()=>autoTick(false),30000);
+/* screen wake, then immediate catch-up: an iPad that slept may have missed
+   several report cycles, and the lock is still recoverable from the obs */
+document.addEventListener('visibilitychange',()=>{
+  if(document.visibilityState!=='visible')return;
+  const age=S.ts?Date.now()-S.ts:Infinity;
+  if(age>4*60000)autoTick(true);
+});
+window.addEventListener('focus',()=>{
+  const age=S.ts?Date.now()-S.ts:Infinity;
+  if(age>8*60000)autoTick(true);
+});
+/* keep the iPad awake while this is the visible tab, if the browser allows */
+let wakeLock=null;
+async function keepAwake(on){
+  try{
+    if(on&&'wakeLock' in navigator){
+      wakeLock=await navigator.wakeLock.request('screen');
+      wakeLock.addEventListener('release',()=>{wakeLock=null});
+    }else if(wakeLock){await wakeLock.release();wakeLock=null}
+  }catch(e){wakeLock=null}
+}
+document.addEventListener('visibilitychange',()=>{
+  if(document.visibilityState==='visible'&&S.awake&&!wakeLock)keepAwake(true);
+});
 setInterval(()=>{
   const now=Date.now();
   document.querySelectorAll('#list b[data-until]').forEach(el=>{
@@ -2057,6 +2148,16 @@ async function setKalshi(v){
   render();
   if(S.kalshi)loadKalshi();
 }
+document.getElementById('au').onclick=async()=>{
+  S.auto=!S.auto;
+  const b=document.getElementById('au');
+  b.textContent=S.auto?'Live ●':'Live ○';
+  b.setAttribute('aria-pressed',String(S.auto));
+  S.awake=S.auto;
+  await keepAwake(S.auto);
+  await store.set('autocfg',{auto:S.auto});
+  if(S.auto)autoTick(true); else render();
+};
 document.getElementById('kb').onchange=e=>setKalshi(e.target.value);
 document.getElementById('xp').onclick=()=>{
   const rows=[['city','climate_day','side','bucket','entry_cents','fee','model_pct','edge_cents',
@@ -2083,13 +2184,21 @@ document.getElementById('tick').addEventListener('click',e=>{
 document.getElementById('fCity').onchange=render;
 document.getElementById('fState').onchange=render;
 (async()=>{
+  const ac=await store.get('autocfg');
+  if(ac&&typeof ac.auto==='boolean')S.auto=ac.auto;
   const kc=await store.get('kcfg2');
   if(kc){S.kalshi=!!kc.on;S.kproxy=kc.proxy||''}
   const kb=document.getElementById('kb');
   kb.value=S.kalshi?(PROXIES[S.kproxy]?S.kproxy:(S.kproxy?'custom':'')):'off';
   let t=await store.get('theme');
   if(t!=='light'&&t!=='dark')t='light';
-  applyTheme(t);render();load();
+  applyTheme(t);
+  const ab=document.getElementById('au');
+  ab.textContent=S.auto?'Live ●':'Live ○';
+  ab.setAttribute('aria-pressed',String(S.auto));
+  render();
+  await load();
+  if(S.auto){S.awake=true;keepAwake(true)}
 })();
 </script>
 </body>
