@@ -317,7 +317,7 @@ const W_NEAR={gfs_hrrr:40,ncep_nbm_conus:30,ecmwf_ifs025:20,gfs_seamless:10};
 const W_FAR ={gfs_hrrr:0, ncep_nbm_conus:30,ecmwf_ifs025:42,gfs_seamless:28};
 const WET=0.01, LADDER=[0.25,0.5,1,1.5,2,3,4,5,6,7,8,9,10,12,15];
 
-const S={data:{},climo:{},track:{},errs:[],busy:false,ts:null,kalshi:true,kproxy:'mine',kBlocked:false,kCool:0,auto:true,awake:false,nextPoll:0};
+const S={data:{},climo:{},track:{},errs:[],busy:false,ts:null,kalshi:true,kproxy:'mine',kBlocked:false,kCool:0,auto:true,awake:false,nextPoll:0,omCool:0};
 let PAL={};
 function readPalette(){
   const cs=getComputedStyle(document.documentElement),g=n=>cs.getPropertyValue('--'+n).trim();
@@ -451,17 +451,25 @@ const CHUNK=10, GAP=260;
    whole board costs 4 requests instead of 80. */
 async function fetchTempsBatched(){
   const out={};
+  if(S.omCool&&Date.now()<S.omCool)return out;
   for(let i=0;i<CITIES.length;i+=CHUNK){
     const grp=CITIES.slice(i,i+CHUNK);
     const lat=grp.map(c=>c.lat).join(','),lon=grp.map(c=>c.lon).join(',');
     for(const m of MODELS){
       let raw;
       try{
-        raw=await cachedMem(`t|${m}|${i}`,9*60000,()=>jget(
+        raw=await cachedMem(`t|${m}|${i}`,25*60000,()=>jget(
           `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}`
           +`&hourly=temperature_2m&models=${m}&temperature_unit=fahrenheit`
           +`&timezone=auto&forecast_days=6&past_days=2`));
-      }catch(e){S.errs.push(`${MLABEL[m]||m} temperatures: ${e.message}`);await sleep(GAP);continue}
+      }catch(e){
+        if(/rate|429|limit/i.test(e.message||'')){
+          S.omCool=Date.now()+15*60000;
+          S.errs.push('Weather API rate limit reached — showing the last good forecast. Retrying in 15 min.');
+          return out;
+        }
+        S.errs.push(`${MLABEL[m]||m} temperatures: ${e.message}`);await sleep(GAP);continue;
+      }
       const arr=Array.isArray(raw)?raw:[raw];
       arr.forEach((b,j)=>{
         const c=grp[j];
@@ -481,11 +489,14 @@ async function fetchWetBatched(){
     const lat=grp.map(c=>c.lat).join(','),lon=grp.map(c=>c.lon).join(',');
     let raw;
     try{
-      raw=await cachedMem(`w|${i}`,9*60000,()=>jget(
+      raw=await cachedMem(`w|${i}`,45*60000,()=>jget(
         `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}`
         +`&hourly=precipitation&daily=precipitation_sum,snowfall_sum,precipitation_probability_max`
-        +`&precipitation_unit=inch&timezone=auto&past_days=31&forecast_days=16`));
-    }catch(e){S.errs.push(`rain forecast: ${e.message}`);await sleep(GAP);continue}
+        +`&precipitation_unit=inch&timezone=auto&past_days=31&forecast_days=10`));
+    }catch(e){
+      if(/rate|429|limit/i.test(e.message||'')){S.omCool=Date.now()+15*60000;return out}
+      S.errs.push(`rain forecast: ${e.message}`);await sleep(GAP);continue;
+    }
     const arr=Array.isArray(raw)?raw:[raw];
     arr.forEach((b,j)=>{const c=grp[j];if(c&&b&&b.daily)out[c.id]=b});
     await sleep(GAP);
@@ -498,16 +509,24 @@ async function fetchWetBatched(){
    of error. Fetched separately because the ensemble API is its own host. */
 async function fetchEnsBatched(){
   const out={};
+  if(S.omCool&&Date.now()<S.omCool)return out;
+  /* Ensembles are priced per MEMBER: 51 members x 10 cities x 6 days is the
+     single most expensive call in the app by a wide margin. Two days is all
+     the extremes need, one model halves it again, and runs update every 6h
+     so caching for 3h costs nothing in accuracy. */
   for(let i=0;i<CITIES.length;i+=CHUNK){
     const grp=CITIES.slice(i,i+CHUNK);
     const lat=grp.map(c=>c.lat).join(','),lon=grp.map(c=>c.lon).join(',');
     let raw;
     try{
-      raw=await cachedMem(`e|${i}`,20*60000,()=>jget(
+      raw=await cachedMem(`e|${i}`,3*36e5,()=>jget(
         `https://ensemble-api.open-meteo.com/v1/ensemble?latitude=${lat}&longitude=${lon}`
-        +`&hourly=temperature_2m&models=gfs025,ecmwf_ifs025`
-        +`&temperature_unit=fahrenheit&timezone=auto&forecast_days=6`));
-    }catch(e){await sleep(GAP);continue}
+        +`&hourly=temperature_2m&models=ecmwf_ifs025`
+        +`&temperature_unit=fahrenheit&timezone=auto&forecast_days=2`));
+    }catch(e){
+      if(/rate|429|limit/i.test(e.message||''))S.omCool=Date.now()+30*60000;
+      await sleep(GAP);continue;
+    }
     const arr=Array.isArray(raw)?raw:[raw];
     arr.forEach((b,j)=>{
       const c=grp[j];
@@ -1553,12 +1572,23 @@ async function load(force){
      cache window silently does nothing */
   if(force===true){Object.keys(memCache).forEach(k=>delete memCache[k]);S.kCool=0}
   render();
-  const[temps,wets,climos,ens]=[await fetchTempsBatched(),await fetchWetBatched(),
-    await fetchClimoBatched(),await fetchEnsBatched()];
-  S.climo=climos;
-  CITIES.forEach(c=>{S.data[c.id]=Object.assign(S.data[c.id]||{},
-    {mod:temps[c.id]||null,wet:wets[c.id]||null,ens:ens[c.id]||null,
-     obs:(S.data[c.id]||{}).obs||[]})});
+  const[temps,wets,climos]=[await fetchTempsBatched(),await fetchWetBatched(),
+    await fetchClimoBatched()];
+  /* the ensemble is expensive and only sharpens sigma — never let it block
+     or replace the forecast */
+  const ens=await fetchEnsBatched();
+  if(climos&&Object.keys(climos).length)S.climo=climos;
+  CITIES.forEach(c=>{
+    const prev=S.data[c.id]||{};
+    /* a transient fetch failure must not wipe a working card. Keep the last
+       good data and mark it stale instead. */
+    S.data[c.id]=Object.assign(prev,{
+      mod:temps[c.id]||prev.mod||null,
+      wet:wets[c.id]||prev.wet||null,
+      ens:ens[c.id]||prev.ens||null,
+      modStale:!temps[c.id]&&!!prev.mod,
+      obs:prev.obs||[]});
+  });
   render();
   /* per-station calls are unavoidable — throttle them rather than burst */
   const obsFail=[];
@@ -1928,7 +1958,8 @@ function card(c){
     ${dx?rainBadge(dx.rain):''}
 </div>`;
   if(!dx||!dx.hi)return`<div class="city">${head}
-    <p style="font-family:var(--mono);font-size:10px;color:var(--haze);margin:12px 0 4px">FORECAST UNAVAILABLE</p>${wetBlock(c,d)}</div>`;
+    <p style="font-family:var(--mono);font-size:10px;color:var(--haze);margin:12px 0 4px">
+      ${d.mod?'FORECAST LOADING…':'WAITING FOR FORECAST DATA'}</p>${wetBlock(c,d)}</div>`;
   const agree=clamp(1-((dx.sHi?dx.sHi.v:dx.modelSpread)-0.6)/4.4,0,1);
   const col=agree>0.66?'var(--gain)':agree>0.35?'var(--gold)':'var(--ember)';
   const word=agree>0.66?'models agree closely':agree>0.35?'some model disagreement':'models disagree a lot';
@@ -2161,8 +2192,10 @@ function nextPollAt(){
     if(soonest==null||t<soonest)soonest=t;
   });
   /* nothing open anywhere: idle pace, still enough to roll into a new day */
-  if(soonest==null)return now+20*60000;
-  return clamp(soonest,now+90000,now+15*60000);
+  if(soonest==null)return now+25*60000;
+  /* floor raised: the models behind these numbers do not update faster than
+     this, so a tighter loop spends quota without changing the forecast */
+  return clamp(soonest,now+5*60000,now+20*60000);
 }
 function scheduleNext(){
   S.nextPoll=nextPollAt();
@@ -2180,11 +2213,11 @@ setInterval(()=>autoTick(false),30000);
 document.addEventListener('visibilitychange',()=>{
   if(document.visibilityState!=='visible')return;
   const age=S.ts?Date.now()-S.ts:Infinity;
-  if(age>4*60000)autoTick(true);
+  if(age>10*60000)autoTick(true);
 });
 window.addEventListener('focus',()=>{
   const age=S.ts?Date.now()-S.ts:Infinity;
-  if(age>8*60000)autoTick(true);
+  if(age>15*60000)autoTick(true);
 });
 /* keep the iPad awake while this is the visible tab, if the browser allows */
 let wakeLock=null;
