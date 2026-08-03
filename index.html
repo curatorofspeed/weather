@@ -183,6 +183,24 @@ main{padding:14px 12px 40px;max-width:640px;margin:0 auto}
 .pb.dn{border-color:rgba(240,97,109,.4);color:var(--loss)}
 .tally.papersum b{color:var(--pulse)}
 .when .nxt{color:var(--dim);font-size:10px}
+.hrs{margin-top:6px}
+.hrhead{display:flex;justify-content:space-between;font-family:var(--mono);font-size:9.5px;
+  letter-spacing:.11em;text-transform:uppercase;color:var(--haze);margin-bottom:6px}
+.hrhead span{color:var(--dim);letter-spacing:.04em;text-transform:none}
+.hrrow{display:flex;gap:4px;overflow-x:auto;padding-bottom:4px;scrollbar-width:thin}
+.hrrow::-webkit-scrollbar{height:3px}
+.hrrow::-webkit-scrollbar-thumb{background:var(--rule);border-radius:2px}
+.hr{flex:0 0 auto;min-width:48px;text-align:center;font-family:var(--mono);
+  padding:5px 6px;border-radius:7px;background:var(--soft);border:1px solid transparent}
+.hr u{display:block;text-decoration:none;font-size:9px;color:var(--dim);letter-spacing:.03em}
+.hr b{display:block;font-size:14px;font-weight:500;margin-top:2px}
+.hr i{display:block;font-style:normal;font-size:9px;color:var(--dim);margin-top:1px}
+.hr.past{opacity:.55}
+.hr.past b{color:var(--obs)}
+.hr.now{border-color:var(--rule);background:rgba(200,180,255,.09)}
+.hr.now b{color:var(--obs)}
+.hr.pk b{color:var(--ember)}
+.hr.tr b{color:var(--cool)}
 .axcap{display:flex;justify-content:space-between;font-family:var(--mono);font-size:9.5px;color:var(--dim);
   margin-top:2px;letter-spacing:.03em}
 .axcap .mid{color:var(--haze);letter-spacing:.09em;text-transform:uppercase}
@@ -733,6 +751,46 @@ function ensSpread(E,keys,dir){
   const s=sd(ext);
   return s==null?null:{sd:s,n:ext.length,
     mean:mean(ext),lo:Math.min(...ext),hi:Math.max(...ext)};
+}
+/* Spread across members at one specific hour — the hourly analogue of
+   ensSpread, used to give each hour its own honest uncertainty. */
+function ensHourSpread(E,key){
+  if(!E||!E.members||E.members.length<5)return null;
+  const i=E.t.findIndex(t=>t.slice(0,13)===key);
+  if(i<0)return null;
+  const v=E.members.map(m=>m[i]).filter(x=>x!=null);
+  if(v.length<5)return null;
+  const s=sd(v);
+  return s==null?null:{sd:s,n:v.length,mean:mean(v),lo:Math.min(...v),hi:Math.max(...v)};
+}
+/* Hour-by-hour forecast across the climate window. Uncertainty is not flat:
+   the hour we are standing in is pinned by the thermometer, the next few
+   inherit most of that, and beyond ~6h it relaxes to what the models and
+   ensemble actually disagree about. */
+function hourlyForecast(dx,d){
+  const W=dx.winHi||dx.win;
+  const nowI=dx.cKeys.indexOf(dx.nowKey);
+  const off=dx.hi?dx.hi.off:0;
+  const obsAt={};
+  (dx.inWin||[]).forEach(o=>{const k=hourKeyTz(new Date(o.t),d.tz||dx.tz||'UTC');
+    if(k)obsAt[k]=o.temp});
+  const out=[];
+  dx.cKeys.forEach((k,i)=>{
+    const b=W[k];
+    if(!b)return;
+    const lead=nowI<0?0:i-nowI;
+    const anchor=lead>=0?off*Math.max(0,1-lead/6):0;
+    const v=b.v+anchor;
+    const e=ensHourSpread(d.ens,k);
+    const c=combineSpread(b.spread,e);
+    /* confidence ramp: pinned now, fully model-driven by +6h */
+    const conf=lead<=0?0.3:clamp(0.3+0.7*(lead/6),0.3,1);
+    out.push({k,h:+k.slice(11,13),i,lead,v,
+      lo:b.lo!=null?b.lo+anchor:null,hi:b.hi!=null?b.hi+anchor:null,
+      sigma:Math.max(0.4,c.v*conf),ens:!!e,members:e?e.n:0,
+      past:lead<0,obs:obsAt[k]!=null?obsAt[k]:null});
+  });
+  return out;
 }
 /* ── grade each model against the thermometer, remove its bias ───── */
 /* Bias is not one number. Models typically run warm overnight (too much
@@ -1359,6 +1417,7 @@ function derive(c,d){
       if(i>=0)out.push({i,v:o.dew})});
     return out.sort((a,b)=>a.i-b.i);
   })();
+  d.tz=tz;
   const rain=rainToday(d.wet,cKeys,nowKey);
   const allDates=[...new Set(Object.values(d.mod).flatMap(m=>m.t.map(x=>x.slice(0,10))))].sort();
   const bandHi=hourBand(extremeHours(cs,wNear,tz,allDates,+1));
@@ -1392,7 +1451,7 @@ function derive(c,d){
   }).filter(x=>x.hi&&x.lo);
 
   return{today,nowHr,nowKey,dst,win,winHi,winLo,cKeys,hi,lo,drop,seam,future,bias,biasHi,biasLo,
-    peakH,trghH,progHi,progLo,rain,bandHi,bandLo,dewLine,wNear,sHi,sLo,modelSpread,eHi,eLo,
+    peakH,trghH,progHi,progLo,rain,bandHi,bandLo,dewLine,wNear,sHi,sLo,modelSpread,eHi,eLo,inWin,tz,
     obsMax,obsMin,obsNow,nowTemp,nowSrc,obsAge,stale,trend,cad,last,inWin,spread};
 }
 
@@ -1759,6 +1818,29 @@ function bookBlock(d,dir){
     <div class="bknote">model % vs book mid, in cents. Difference is not a recommendation.</div>
   </div>`;
 }
+function hourStrip(c,d,dx){
+  const rows=hourlyForecast(dx,d);
+  if(rows.length<4)return'';
+  const nowI=dx.cKeys.indexOf(dx.nowKey);
+  /* two hours of context behind, the rest of the window ahead */
+  const show=rows.filter(r=>r.i>=nowI-2);
+  if(show.length<3)return'';
+  const peakH=dx.progHi?dx.progHi.hr:null, trghH=dx.progLo?dx.progLo.hr:null;
+  const anyEns=show.some(r=>r.ens);
+  return`<div class="hrs">
+    <div class="hrhead">Hour by hour
+      <span>${anyEns?`${show.find(r=>r.ens).members}-member spread`:'model spread'}</span></div>
+    <div class="hrrow">${show.map(r=>{
+      const mark=r.h===peakH?'pk':r.h===trghH?'tr':'';
+      const cls=r.past?'past':r.lead===0?'now':'';
+      const val=r.past&&r.obs!=null?r.obs:r.v;
+      return`<div class="hr ${cls} ${mark}">
+        <u>${r.lead===0?'now':ampm(r.h)}</u>
+        <b>${Math.round(val)}°</b>
+        <i>${r.past?(r.obs!=null?'obs':'—'):'±'+r.sigma.toFixed(1)}</i>
+      </div>`}).join('')}</div>
+  </div>`;
+}
 function ledgerLine(c,dx){
   const arr=S.track[c.id]||[];
   const st=ledgerStats(arr);
@@ -1899,6 +1981,7 @@ function card(c){
         <div class="rng">${dx.lo?rngText(dx.lo,tk&&tk.gap?tk.gap.lo:null):''}</div></div>
     </div>
     ${curve(c,d)}
+    ${hourStrip(c,d,dx)}
     <div class="now">
       <div><u>Max so far</u><b class="o">${dx.obsMax!=null?Math.round(dx.obsMax)+'°':'—'}</b></div>
       <div><u>Min so far</u><b class="c">${dx.obsMin!=null?Math.round(dx.obsMin)+'°':'—'}</b></div>
