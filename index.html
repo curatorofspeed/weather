@@ -317,7 +317,7 @@ const W_NEAR={gfs_hrrr:40,ncep_nbm_conus:30,ecmwf_ifs025:20,gfs_seamless:10};
 const W_FAR ={gfs_hrrr:0, ncep_nbm_conus:30,ecmwf_ifs025:42,gfs_seamless:28};
 const WET=0.01, LADDER=[0.25,0.5,1,1.5,2,3,4,5,6,7,8,9,10,12,15];
 
-const S={data:{},climo:{},track:{},errs:[],busy:false,ts:null,kalshi:true,kproxy:'mine',kBlocked:false,kCool:0,auto:true,awake:false,nextPoll:0,omCool:0};
+const S={data:{},climo:{},track:{},errs:[],busy:false,ts:null,kalshi:true,kproxy:'mine',kBlocked:false,kCool:0,auto:true,awake:false,nextPoll:0,omCool:0,omHits:0,snapAge:0};
 let PAL={};
 function readPalette(){
   const cs=getComputedStyle(document.documentElement),g=n=>cs.getPropertyValue('--'+n).trim();
@@ -449,6 +449,15 @@ const CHUNK=10, GAP=260;
 /* Open-Meteo accepts comma-separated coordinates and returns one block per
    location. One model per call keeps the response shape unambiguous, so the
    whole board costs 4 requests instead of 80. */
+/* Repeated limits mean the daily quota is gone, not the per-minute one, so
+   back off progressively rather than retrying every 15 minutes all day. */
+function omBackoff(){
+  S.omHits=(S.omHits||0)+1;
+  const mins=[10,20,45,90,180][Math.min(S.omHits-1,4)];
+  S.omCool=Date.now()+mins*60000;
+  S.errs=S.errs.filter(e=>!/rate limit/i.test(e));
+  S.errs.push(`Weather API rate limit — showing the last good forecast, retrying in ${mins} min.`);
+}
 async function fetchTempsBatched(){
   const out={};
   if(S.omCool&&Date.now()<S.omCool)return out;
@@ -464,8 +473,7 @@ async function fetchTempsBatched(){
           +`&timezone=auto&forecast_days=6&past_days=2`));
       }catch(e){
         if(/rate|429|limit/i.test(e.message||'')){
-          S.omCool=Date.now()+15*60000;
-          S.errs.push('Weather API rate limit reached — showing the last good forecast. Retrying in 15 min.');
+          omBackoff();
           return out;
         }
         S.errs.push(`${MLABEL[m]||m} temperatures: ${e.message}`);await sleep(GAP);continue;
@@ -494,7 +502,7 @@ async function fetchWetBatched(){
         +`&hourly=precipitation&daily=precipitation_sum,snowfall_sum,precipitation_probability_max`
         +`&precipitation_unit=inch&timezone=auto&past_days=31&forecast_days=10`));
     }catch(e){
-      if(/rate|429|limit/i.test(e.message||'')){S.omCool=Date.now()+15*60000;return out}
+      if(/rate|429|limit/i.test(e.message||'')){omBackoff();return out}
       S.errs.push(`rain forecast: ${e.message}`);await sleep(GAP);continue;
     }
     const arr=Array.isArray(raw)?raw:[raw];
@@ -524,7 +532,7 @@ async function fetchEnsBatched(){
         +`&hourly=temperature_2m&models=ecmwf_ifs025`
         +`&temperature_unit=fahrenheit&timezone=auto&forecast_days=2`));
     }catch(e){
-      if(/rate|429|limit/i.test(e.message||''))S.omCool=Date.now()+30*60000;
+      if(/rate|429|limit/i.test(e.message||''))omBackoff();
       await sleep(GAP);continue;
     }
     const arr=Array.isArray(raw)?raw:[raw];
@@ -574,11 +582,16 @@ function obsRow(p){
 }
 let QC='&require_qc=false';          // dropped automatically if rejected
 async function obsGet(url){
-  try{ return await jget(url+QC) }
+  /* Decide from the URL WE sent, not from shared state. Four stations fetch
+     in parallel; if the retry is gated on a global flag the first request to
+     clear it makes the others give up instead of retrying. */
+  const sent=QC;
+  try{ return await jget(url+sent) }
   catch(e){
-    /* a 400 here means the parameter is not supported on this endpoint —
-       stop sending it rather than breaking every station */
-    if(QC&&/\b400\b/.test(e.message||'')){ QC=''; return jget(url) }
+    if(sent&&/\b(400|403)\b/.test(e.message||'')){
+      QC='';                       // stop sending it from now on
+      return jget(url);            // and retry THIS one regardless
+    }
     throw e;
   }
 }
@@ -1566,6 +1579,29 @@ function monthOutlook(c,W,CL,today,cli){
 }
 
 /* ── load ────────────────────────────────────────────────────────── */
+/* Keep the last good forecast on disk. A reload during a rate limit then
+   has something real to show instead of an empty board. */
+async function saveSnapshot(){
+  try{
+    const out={};
+    CITIES.forEach(c=>{const d=S.data[c.id];
+      if(d&&d.mod)out[c.id]={mod:d.mod,wet:d.wet||null}});
+    if(Object.keys(out).length)await store.set('snap1',{at:Date.now(),d:out});
+  }catch(e){}
+}
+async function hydrate(){
+  try{
+    const s=await store.get('snap1');
+    if(!s||!s.d)return 0;
+    if(Date.now()-s.at>12*36e5)return 0;        // too old to be useful
+    let n=0;
+    CITIES.forEach(c=>{const v=s.d[c.id];if(!v)return;
+      const p=S.data[c.id]||{};
+      if(!p.mod){S.data[c.id]=Object.assign(p,{mod:v.mod,wet:v.wet,modStale:true,obs:p.obs||[]});n++}});
+    if(n){S.snapAge=s.at;CITIES.forEach(c=>{const d=S.data[c.id];if(d&&d.mod)d.dx=derive(c,d)})}
+    return n;
+  }catch(e){return 0}
+}
 async function load(force){
   if(S.busy)return;S.busy=true;S.errs=[];S.tzWarn=null;
   /* the button has to mean it — otherwise a manual refresh inside the
@@ -1608,6 +1644,8 @@ async function load(force){
     }));
     await sleep(180);render();
   }
+  if(Object.keys(temps).length)S.omHits=0;
+  await saveSnapshot();
   if(obsFail.length)S.errs.push(
     `Observations unavailable for ${obsFail.length} of ${CITIES.length} stations `
     +`(${obsFail.slice(0,3).join(', ')}${obsFail.length>3?', …':''}). `
@@ -1955,11 +1993,14 @@ function card(c){
   const head=`<div class="name"><b>${esc(c.city)}</b><span class="site">${esc(c.site)}</span>
     ${dx&&dx.hi&&dx.hi.locked?'<span class="lockbadge">HIGH LOCKED</span>':''}
     ${dx&&dx.lo&&dx.lo.locked?'<span class="lockbadge">LOW LOCKED</span>':''}
+    ${d.modStale?`<span class="lockbadge" style="border-color:var(--warnbd);color:var(--gold)">CACHED FORECAST</span>`:''}
     ${dx?rainBadge(dx.rain):''}
 </div>`;
   if(!dx||!dx.hi)return`<div class="city">${head}
     <p style="font-family:var(--mono);font-size:10px;color:var(--haze);margin:12px 0 4px">
-      ${d.mod?'FORECAST LOADING…':'WAITING FOR FORECAST DATA'}</p>${wetBlock(c,d)}</div>`;
+      ${d.mod?'FORECAST LOADING…':(S.omCool>Date.now()
+        ?'NO CACHED FORECAST YET — WAITING OUT THE API LIMIT'
+        :'WAITING FOR FORECAST DATA')}</p>${wetBlock(c,d)}</div>`;
   const agree=clamp(1-((dx.sHi?dx.sHi.v:dx.modelSpread)-0.6)/4.4,0,1);
   const col=agree>0.66?'var(--gain)':agree>0.35?'var(--gold)':'var(--ember)';
   const word=agree>0.66?'models agree closely':agree>0.35?'some model disagreement':'models disagree a lot';
@@ -2312,6 +2353,7 @@ document.getElementById('fState').onchange=render;
   const ab=document.getElementById('au');
   ab.textContent=S.auto?'Live ●':'Live ○';
   ab.setAttribute('aria-pressed',String(S.auto));
+  const n=await hydrate();
   render();
   await load();
   if(S.auto){S.awake=true;keepAwake(true)}
