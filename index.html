@@ -317,7 +317,7 @@ const W_NEAR={gfs_hrrr:40,ncep_nbm_conus:30,ecmwf_ifs025:20,gfs_seamless:10};
 const W_FAR ={gfs_hrrr:0, ncep_nbm_conus:30,ecmwf_ifs025:42,gfs_seamless:28};
 const WET=0.01, LADDER=[0.25,0.5,1,1.5,2,3,4,5,6,7,8,9,10,12,15];
 
-const S={data:{},climo:{},track:{},errs:[],busy:false,ts:null,kalshi:true,kproxy:'mine',kBlocked:false,kCool:0,auto:true,awake:false,nextPoll:0,omCool:0,omHits:0,snapAge:0};
+const S={data:{},climo:{},track:{},errs:[],busy:false,ts:null,kalshi:true,kproxy:'mine',kBlocked:false,kCool:0,auto:true,awake:false,nextPoll:0,omCool:0,omHits:0,snapAge:0,fallback:false};
 let PAL={};
 function readPalette(){
   const cs=getComputedStyle(document.documentElement),g=n=>cs.getPropertyValue('--'+n).trim();
@@ -460,7 +460,7 @@ function omBackoff(){
 }
 async function fetchTempsBatched(){
   const out={};
-  if(S.omCool&&Date.now()<S.omCool)return out;
+  if(S.omCool&&Date.now()<S.omCool)return out;      // caller falls back to NWS
   for(let i=0;i<CITIES.length;i+=CHUNK){
     const grp=CITIES.slice(i,i+CHUNK);
     const lat=grp.map(c=>c.lat).join(','),lon=grp.map(c=>c.lon).join(',');
@@ -546,6 +546,48 @@ async function fetchEnsBatched(){
       cols.forEach(k=>{if(h[k])bag.members.push(h[k])});
     });
     await sleep(GAP);
+  }
+  return out;
+}
+/* Open-Meteo is one provider with one quota. api.weather.gov publishes the
+   official NBM-based hourly forecast for the same points, free and without a
+   key, and we already talk to it for observations. When Open-Meteo is out,
+   fall back to it so the board keeps working instead of going blank.
+   One model means no inter-model spread, so sigma stays conservative — which
+   is the honest consequence, not a hidden downgrade. */
+async function nwsGridUrl(c){
+  const k='grid_'+c.id;
+  const hit=await store.get(k);
+  if(hit&&hit.url&&Date.now()-hit.at<30*864e5)return hit.url;
+  const d=await jget(`https://api.weather.gov/points/${c.lat.toFixed(4)},${c.lon.toFixed(4)}`);
+  const url=d&&d.properties&&d.properties.forecastHourly;
+  if(url)await store.set(k,{at:Date.now(),url});
+  return url;
+}
+async function fetchNwsOne(c){
+  const url=await nwsGridUrl(c);
+  if(!url)return null;
+  const d=await jget(url+'?units=us');
+  const per=(d.properties&&d.properties.periods)||[];
+  if(per.length<24)return null;
+  const t=[],v=[];
+  per.forEach(p=>{
+    if(p.temperature==null)return;
+    t.push(hourKeyTz(new Date(p.startTime),c.tz)+':00');
+    v.push(p.temperature);
+  });
+  return t.length>=24?{t,v}:null;
+}
+async function fetchNwsFallback(){
+  const out={};
+  for(let i=0;i<CITIES.length;i+=4){
+    await Promise.allSettled(CITIES.slice(i,i+4).map(async c=>{
+      try{
+        const r=await cachedMem('nwsf|'+c.id,25*60000,()=>fetchNwsOne(c));
+        if(r)out[c.id]={nws_hourly:r};
+      }catch(e){}
+    }));
+    await sleep(200);
   }
   return out;
 }
@@ -1608,8 +1650,18 @@ async function load(force){
      cache window silently does nothing */
   if(force===true){Object.keys(memCache).forEach(k=>delete memCache[k]);S.kCool=0}
   render();
-  const[temps,wets,climos]=[await fetchTempsBatched(),await fetchWetBatched(),
-    await fetchClimoBatched()];
+  let temps=await fetchTempsBatched();
+  let usedFallback=false;
+  if(!Object.keys(temps).length){
+    /* Open-Meteo gave us nothing — go to the other provider rather than
+       showing an empty board */
+    const nws=await fetchNwsFallback();
+    if(Object.keys(nws).length){temps=nws;usedFallback=true;
+      S.errs=S.errs.filter(e=>!/rate limit/i.test(e));
+      S.errs.push('Open-Meteo is rate limited — using the National Weather Service forecast instead. Single model, so the ranges are wider.');}
+  }
+  S.fallback=usedFallback;
+  const[wets,climos]=[await fetchWetBatched(),await fetchClimoBatched()];
   /* the ensemble is expensive and only sharpens sigma — never let it block
      or replace the forecast */
   const ens=await fetchEnsBatched();
@@ -1994,13 +2046,12 @@ function card(c){
     ${dx&&dx.hi&&dx.hi.locked?'<span class="lockbadge">HIGH LOCKED</span>':''}
     ${dx&&dx.lo&&dx.lo.locked?'<span class="lockbadge">LOW LOCKED</span>':''}
     ${d.modStale?`<span class="lockbadge" style="border-color:var(--warnbd);color:var(--gold)">CACHED FORECAST</span>`:''}
+    ${d.mod&&d.mod.nws_hourly&&!d.modStale?`<span class="lockbadge" style="border-color:var(--rule);color:var(--dim)">NWS FORECAST</span>`:''}
     ${dx?rainBadge(dx.rain):''}
 </div>`;
   if(!dx||!dx.hi)return`<div class="city">${head}
     <p style="font-family:var(--mono);font-size:10px;color:var(--haze);margin:12px 0 4px">
-      ${d.mod?'FORECAST LOADING…':(S.omCool>Date.now()
-        ?'NO CACHED FORECAST YET — WAITING OUT THE API LIMIT'
-        :'WAITING FOR FORECAST DATA')}</p>${wetBlock(c,d)}</div>`;
+      ${d.mod?'FORECAST LOADING…':'FETCHING FORECAST…'}</p>${wetBlock(c,d)}</div>`;
   const agree=clamp(1-((dx.sHi?dx.sHi.v:dx.modelSpread)-0.6)/4.4,0,1);
   const col=agree>0.66?'var(--gain)':agree>0.35?'var(--gold)':'var(--ember)';
   const word=agree>0.66?'models agree closely':agree>0.35?'some model disagreement':'models disagree a lot';
@@ -2061,7 +2112,9 @@ function card(c){
       <div><u>Sky</u><b style="font-size:12px">${dx.last?esc(dx.last.sky):'—'}</b></div></div>
     <div class="conf"><span>${dx.sHi&&dx.sHi.src==='ensemble'
       ? `${dx.sHi.n}-member ensemble · ±${dx.sHi.ensSd}° spread`
-      : word}</span><span class="meter"><i style="width:${(agree*100).toFixed(0)}%;background:${col}"></i></span>
+      : (d.mod&&d.mod.nws_hourly&&Object.keys(d.mod).length===1
+        ? 'single forecast — no model spread to measure'
+        : word)}</span><span class="meter"><i style="width:${(agree*100).toFixed(0)}%;background:${col}"></i></span>
       <span>±${dx.hi.sigma.toFixed(1)}°/${dx.lo?dx.lo.sigma.toFixed(1):'—'}°</span></div>
     ${progressRow(dx)}
     ${bookBlock(d,+1)}${bookBlock(d,-1)}
